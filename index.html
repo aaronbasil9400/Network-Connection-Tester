@@ -1,0 +1,108 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Connection Health – Internet Speed, Latency, Jitter & Network Test</title><meta name="description" content="Test internet speed, latency, jitter, request loss and browser-visible connection security from your browser.">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Connection Health">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/assets/css/site.css">
+<script src="/assets/js/config.js"></script><link rel="canonical" href="https://example.com/"><meta property="og:type" content="website"><meta property="og:title" content="Connection Health – Internet Diagnostic"><meta property="og:description" content="Test internet speed, latency, jitter, request loss and browser-visible security signals."><meta property="og:url" content="https://example.com/"><meta property="og:image" content="https://example.com/assets/icons/icon-512.png"><meta name="twitter:card" content="summary"><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Connection Health","applicationCategory":"UtilitiesApplication","operatingSystem":"Any","url":"https://example.com/","description":"Browser-based internet connection diagnostic for speed, latency, jitter and request loss."}</script></head><body><nav class="site-nav" aria-label="Primary navigation">
+<a class="brand" href="/"><span class="brand-mark">CH</span><span>Connection Health</span></a>
+<div class="nav-links"><a href="/#diagnostic-tool">Test</a><a href="/how-it-works/">How it works</a><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/contact/">Contact</a></div>
+</nav>
+<main class="app" id="diagnostic-tool">
+  <header>
+    <div><h1>Connection Health</h1><p class="subtitle">Mobile-friendly network diagnostics, throughput, stability and browser-visible security signals.</p></div>
+    <button class="icon-button" id="settingsBtn" aria-label="Open settings">⚙︎</button>
+  </header>
+
+  <section class="hero" id="hero">
+    <div class="hero-top">
+      <div class="overall-row">
+        <div class="overall-dot" id="overallDot"></div>
+        <div><div class="overall-label">Overall status</div><div class="overall-status" id="overallStatus">Ready to check</div></div>
+      </div>
+      <div class="score-block"><div class="score" id="qualityScore">—<small>/100</small></div><div class="score-label" id="qualityLabel">Quality</div></div>
+    </div>
+    <div class="hero-meta"><span id="lastCheck">No checks run yet</span><span id="testDuration">Duration: —</span></div>
+    <div class="progress-track" aria-hidden="true"><span id="runProgress"></span></div>
+    <div class="progress-text" id="progressText">Choose a quick check or full diagnostic.</div>
+    <div class="controls">
+      <button class="primary-button" id="fullBtn">Full diagnostic</button>
+      <button class="secondary-button" id="quickBtn">Quick check</button>
+      <button class="secondary-button share-button" id="shareBtn">Share report</button>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="card"><div class="card-title"><span>Internet</span><span class="pill" id="internetPill">Unknown</span></div><div class="metric" id="internetMetric">—</div><div class="detail" id="internetDetail">Endpoint reachability and browser online state.</div></article>
+    <article class="card"><div class="card-title"><span>Latency</span><span class="pill" id="latencyPill">—</span></div><div class="metric" id="latencyMetric">— ms</div><div class="detail" id="latencyDetail">Average round-trip request time.</div><div class="delta" id="latencyDelta"></div></article>
+    <article class="card"><div class="card-title"><span>Jitter</span><span class="pill" id="jitterPill">—</span></div><div class="metric" id="jitterMetric">— ms</div><div class="detail">Average variation between successful latency samples.</div></article>
+    <article class="card"><div class="card-title"><span>Request loss</span><span class="pill" id="lossPill">—</span></div><div class="metric" id="lossMetric">—%</div><div class="detail" id="lossDetail">Approximation from repeated endpoint requests.</div></article>
+    <article class="card"><div class="card-title"><span>Download</span><span class="pill" id="downloadPill">Speed test</span></div><div class="metric" id="downloadMetric">— Mbps</div><div class="detail" id="downloadDetail">Adaptive Cloudflare transfer.</div><div class="delta" id="downloadDelta"></div></article>
+    <article class="card"><div class="card-title"><span>Upload</span><span class="pill" id="uploadPill">Speed test</span></div><div class="metric" id="uploadMetric">— Mbps</div><div class="detail" id="uploadDetail">Adaptive Cloudflare transfer.</div><div class="delta" id="uploadDelta"></div></article>
+    <article class="card"><div class="card-title"><span>Network</span><span class="pill" id="networkPill">Browser</span></div><div class="metric small" id="networkMetric">Unavailable</div><div class="detail" id="networkDetail">Connection details depend on browser support.</div></article>
+    <article class="card"><div class="card-title"><span>Battery</span><span class="pill" id="batteryPill">Browser</span></div><div class="metric" id="batteryMetric">Unavailable</div><div class="bar"><span id="batteryBar"></span></div><div class="detail" id="batteryDetail">Battery API may be restricted.</div></article>
+
+    <article class="card full">
+      <div class="card-title"><span>Diagnostic verdict</span><span class="pill" id="verdictPill">Not checked</span></div>
+      <div class="metric small" id="verdictSummary">Run a diagnostic to evaluate common connection use cases.</div>
+      <div class="verdict-grid">
+        <div class="verdict-item"><div class="verdict-name">Gaming</div><div class="verdict-value" id="gamingVerdict">—</div></div>
+        <div class="verdict-item"><div class="verdict-name">Video calls</div><div class="verdict-value" id="callsVerdict">—</div></div>
+        <div class="verdict-item"><div class="verdict-name">Streaming</div><div class="verdict-value" id="streamVerdict">—</div></div>
+        <div class="verdict-item"><div class="verdict-name">Browsing</div><div class="verdict-value" id="browseVerdict">—</div></div>
+      </div>
+    </article>
+
+    <article class="card full">
+      <div class="card-title"><span>Device</span><span class="pill">Local</span></div>
+      <div class="metric small" id="deviceMetric">Detecting…</div>
+      <div class="device-grid" id="deviceGrid"></div>
+    </article>
+
+    <article class="card full">
+      <div class="card-title"><span>Connection Security Signals</span><span class="pill" id="securityPill">Not checked</span></div>
+      <div class="security-head"><div><div class="security-score" id="securityScore">—<small>/100</small></div><div class="detail" id="securitySummary">Browser-visible checks only.</div></div></div>
+      <div class="bar"><span id="securityBar"></span></div><div class="security-list" id="securityList"></div>
+    </article>
+
+    <article class="card full"><div class="card-title"><span>Service checks</span><span class="pill" id="serviceSummary">Not checked</span></div><div class="service-list" id="serviceList"></div></article>
+
+    <article class="card full">
+      <div class="card-title"><span>Performance history</span><span class="pill">Last 20</span></div>
+      <div class="chart-grid">
+        <div class="chart-box"><div class="chart-head"><span>Latency</span><span id="latencyLatest">— ms</span></div><canvas id="latencyChart" width="800" height="220"></canvas></div>
+        <div class="chart-box"><div class="chart-head"><span>Download</span><span id="downloadLatest">— Mbps</span></div><canvas id="downloadChart" width="800" height="220"></canvas></div>
+        <div class="chart-box"><div class="chart-head"><span>Upload</span><span id="uploadLatest">— Mbps</span></div><canvas id="uploadChart" width="800" height="220"></canvas></div>
+      </div>
+      <div class="detail">History is stored only in this browser.</div>
+    </article>
+  </section>
+
+  <p class="footer">Request-loss is an application-layer approximation, not ICMP packet loss. Security scoring covers only browser-visible signals; it cannot inspect Wi-Fi encryption, router configuration, DNS integrity, LAN devices, open ports or malware.</p>
+</main>
+
+<div class="settings" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <section class="sheet"><div class="sheet-handle"></div><div class="sheet-header"><h2 id="settingsTitle">Check settings</h2><button class="icon-button" id="closeSettingsBtn" aria-label="Close settings">✕</button></div>
+    <div class="form-grid"><label>Request timeout (milliseconds)<input id="timeoutInput" type="number" min="1000" max="30000" step="500" inputmode="numeric"></label><label>Auto-refresh interval (seconds, 0 = off)<input id="intervalInput" type="number" min="0" max="3600" step="5" inputmode="numeric"></label></div>
+    <h3 style="margin:20px 0 10px;font-size:1rem">Endpoints</h3><div id="serviceEditors" class="form-grid"></div><button class="secondary-button" id="addServiceBtn" style="width:100%;margin-top:10px">＋ Add endpoint</button>
+    <div class="sheet-actions"><button class="secondary-button" id="resetBtn">Reset</button><button class="primary-button" id="saveBtn">Save settings</button></div>
+    <p class="privacy-note">Settings and history are stored in localStorage on this device. Endpoint requests are sent directly from the browser. HTTPS endpoints are recommended.</p>
+  </section>
+</div>
+
+<section class="info-section" aria-label="Understanding your connection results">
+<article class="content-card"><h2>Understand your connection</h2><p>Connection Health measures browser-visible internet performance without installing an app. The full diagnostic samples endpoint response times, estimates jitter and request loss, tests download and upload throughput, and combines those signals into a practical quality score.</p><p><strong>Important:</strong> request loss is an application-layer approximation, not an ICMP packet-loss test. Browser security signals also cannot inspect Wi-Fi encryption, your router, open ports, DNS integrity, LAN devices, or malware.</p></article>
+<article class="content-card"><h2>Learn what the numbers mean</h2><div class="guide-grid">
+<a class="guide-link" href="/guides/what-is-latency/"><strong>What is latency?</strong><span>Why response time matters for gaming, calls and browsing.</span></a>
+<a class="guide-link" href="/guides/what-is-jitter/"><strong>What is jitter?</strong><span>How inconsistent latency can make a fast connection feel unstable.</span></a>
+<a class="guide-link" href="/guides/internet-speed-for-gaming/"><strong>Internet for gaming</strong><span>Why latency and stability usually matter more than headline Mbps.</span></a>
+<a class="guide-link" href="/guides/internet-speed-for-streaming/"><strong>Internet for streaming</strong><span>How throughput and consistency affect HD and 4K playback.</span></a>
+<a class="guide-link" href="/guides/why-is-my-wifi-slow/"><strong>Why is my Wi-Fi slow?</strong><span>Common bottlenecks and a structured troubleshooting approach.</span></a>
+<a class="guide-link" href="/guides/how-speed-tests-work/"><strong>How speed tests work</strong><span>Why different test sizes and servers produce different results.</span></a>
+</div></article>
+<div class="ad-slot" aria-label="Advertisement"><ins class="adsbygoogle" style="display:block" data-ad-format="auto" data-full-width-responsive="true"></ins></div>
+</section><footer class="site-footer"><div class="footer-links"><a href="/about/">About</a><a href="/how-it-works/">How it works</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/contact/">Contact</a></div><div>© <span id="year"></span> Connection Health. Browser-based network diagnostics. Measurements are estimates and should not be treated as a security audit.</div></footer><script>document.getElementById('year').textContent=new Date().getFullYear()</script><script src="/assets/js/app.js"></script><script src="/assets/js/ads.js" defer></script><script src="/assets/js/pwa.js" defer></script></body></html>
