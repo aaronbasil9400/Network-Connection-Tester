@@ -39,7 +39,7 @@ netvitals-site/
 1. Point `netvitals.net` at the production host and enforce HTTPS.
 2. Create and monitor `contact@netvitals.net` and `privacy@netvitals.net`, or replace them site-wide.
 3. Review the Privacy Policy and Terms for your actual jurisdiction and business. They are not legal advice.
-4. Keep `enableAds: false` until your AdSense site setup is approved and privacy messaging is configured.
+4. Keep ads enabled only after your AdSense site setup is approved and privacy messaging is configured.
 
 A useful AdSense placeholder check before committing:
 
@@ -145,10 +145,10 @@ Official CMP guidance: https://support.google.com/adsense/answer/7670013
 
 ### 4. Configure `ads.txt`
 
-When AdSense gives you the exact publisher line, replace the placeholder in `/ads.txt`. A typical Google line looks like this format:
+The production `/ads.txt` entry is configured for the current publisher ID:
 
 ```text
-google.com, pub-YOUR_PUBLISHER_ID, DIRECT, f08c47fec0942fa0
+google.com, pub-4936629245103906, DIRECT, f08c47fec0942fa0
 ```
 
 Use the value shown in your own AdSense account rather than copying an example publisher ID.
@@ -161,13 +161,13 @@ Edit `assets/js/config.js`:
 window.NETVITALS_CONFIG = Object.freeze({
   siteName: "NetVitals",
   siteUrl: "https://netvitals.net",
-  adsenseClient: "ca-pub-YOUR_PUBLISHER_ID",
+  adsenseClient: "ca-pub-4936629245103906",
   adsenseSlot: "YOUR_OPTIONAL_AD_UNIT_ID",
   enableAds: true
 });
 ```
 
-The included `assets/js/ads.js` loads Google's AdSense library only when `enableAds` is `true` and the publisher ID has the expected `ca-pub-...` form. This supports site verification and Auto ads across every page. The homepage's manual responsive unit is initialized only when `adsenseSlot` is a numeric ad-unit ID; otherwise its container remains hidden.
+Google's Auto ads script is included once in the `<head>` of every HTML page. The included `assets/js/ads.js` handles only optional manual units: the homepage's responsive unit is initialized when `adsenseSlot` is a numeric ad-unit ID; otherwise its container remains hidden.
 
 ### 6. Ad placement strategy
 
@@ -229,7 +229,7 @@ Open `http://localhost:8080`. Browsers treat localhost as a trustworthy developm
 - `sitemap.xml` uses the real canonical domain.
 - `robots.txt` points to the real sitemap.
 - `ads.txt` contains your real publisher entry only when AdSense supplies it.
-- AdSense is disabled until your account/site setup is ready.
+- AdSense uses publisher `ca-pub-4936629245103906` and is enabled only when the account/site setup is ready.
 
 # Updating the site
 

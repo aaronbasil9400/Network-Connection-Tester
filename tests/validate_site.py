@@ -31,6 +31,7 @@ class SiteHTMLParser(HTMLParser):
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_ORIGIN = 'https://netvitals.net'
+ADSENSE_CLIENT = 'ca-pub-4936629245103906'
 errors=[]
 for p in ROOT.rglob('*.html'):
     source=p.read_text(encoding='utf-8')
@@ -47,10 +48,14 @@ for p in ROOT.rglob('*.html'):
     if 'NetVitals' not in title: errors.append(f'{p.relative_to(ROOT)} title is not branded NetVitals')
     if 'Developed by Aaron Basil Raj' not in source: errors.append(f'{p.relative_to(ROOT)} missing visible developer credit')
     if 'Connection Health' in source or 'example.com' in source: errors.append(f'{p.relative_to(ROOT)} contains legacy branding or domain')
+    adsense_url=f'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={ADSENSE_CLIENT}'
+    if source.count(adsense_url) != 1: errors.append(f'{p.relative_to(ROOT)} must contain exactly one Auto ads script')
 json.loads((ROOT/'manifest.webmanifest').read_text())
 ET.parse(ROOT/'sitemap.xml')
 for icon in ['favicon.svg','favicon.ico','apple-touch-icon.png','icon-192.png','icon-512.png']:
     if not (ROOT/'assets'/'icons'/icon).is_file(): errors.append(f'missing icon: {icon}')
+expected_ads_txt=f'google.com, pub-{ADSENSE_CLIENT.removeprefix("ca-pub-")}, DIRECT, f08c47fec0942fa0'
+if (ROOT/'ads.txt').read_text(encoding='utf-8').strip() != expected_ads_txt: errors.append('ads.txt does not contain exactly one matching AdSense publisher entry')
 for js in list((ROOT/'assets/js').glob('*.js'))+[ROOT/'service-worker.js']:
     cp=subprocess.run(['node','--check',str(js)],capture_output=True,text=True)
     if cp.returncode: errors.append(f'{js.relative_to(ROOT)} JS syntax: {cp.stderr.strip()}')
