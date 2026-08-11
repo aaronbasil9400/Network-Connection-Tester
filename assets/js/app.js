@@ -1,7 +1,7 @@
 
 'use strict';
 const STORAGE_KEY='phone-status-app-v3', HISTORY_KEY='phone-status-history-v3';
-const defaults={timeoutMs:6000,intervalSec:0,services:[{name:'Cloudflare',url:'https://www.cloudflare.com/cdn-cgi/trace'},{name:'Google',url:'https://www.google.com/generate_204'},{name:'OpenAI',url:'https://status.openai.com/'}]};
+const defaults={timeoutMs:6000,intervalSec:0,services:[{name:'Cloudflare',url:'https://www.cloudflare.com/'},{name:'Google',url:'https://www.google.com/'},{name:'Microsoft',url:'https://www.microsoft.com/'}]};
 const state={settings:loadJson(STORAGE_KEY,defaults),history:loadJson(HISTORY_KEY,[]),timer:null,checking:false,results:[],lastResult:null,securityResult:null};
 const $=id=>document.getElementById(id);
 const ids=['hero','overallDot','overallStatus','qualityScore','qualityLabel','lastCheck','testDuration','runProgress','progressText','fullBtn','quickBtn','shareBtn','settingsBtn','internetPill','internetMetric','internetDetail','latencyPill','latencyMetric','latencyDetail','latencyDelta','jitterPill','jitterMetric','lossPill','lossMetric','lossDetail','downloadPill','downloadMetric','downloadDetail','downloadDelta','uploadPill','uploadMetric','uploadDetail','uploadDelta','networkPill','networkMetric','networkDetail','batteryPill','batteryMetric','batteryBar','batteryDetail','verdictPill','verdictSummary','gamingVerdict','callsVerdict','streamVerdict','browseVerdict','deviceMetric','deviceGrid','securityPill','securityScore','securitySummary','securityBar','securityList','serviceList','serviceSummary','latencyChart','downloadChart','uploadChart','latencyLatest','downloadLatest','uploadLatest','settingsPanel','closeSettingsBtn','timeoutInput','intervalInput','serviceEditors','addServiceBtn','resetBtn','saveBtn'];
