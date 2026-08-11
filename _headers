@@ -8,3 +8,7 @@
 
 /service-worker.js
   Cache-Control: no-cache
+
+/ping.txt
+  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  CDN-Cache-Control: no-store

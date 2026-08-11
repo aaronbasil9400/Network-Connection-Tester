@@ -22,12 +22,15 @@ netvitals-site/
 ├── assets/
 │   ├── css/site.css
 │   ├── js/app.js
+│   ├── js/metrics.js
 │   ├── js/config.js
 │   ├── js/ads.js
 │   ├── js/pwa.js
 │   └── icons/
 ├── manifest.webmanifest
 ├── service-worker.js
+├── ping.txt
+├── tests/
 ├── robots.txt
 ├── sitemap.xml
 ├── ads.txt
@@ -84,18 +87,19 @@ Check these URLs after deployment:
 https://netvitals.net/
 https://netvitals.net/manifest.webmanifest
 https://netvitals.net/service-worker.js
+https://netvitals.net/ping.txt
 https://netvitals.net/robots.txt
 https://netvitals.net/sitemap.xml
 https://netvitals.net/ads.txt
 ```
 
-Also run both Quick Check and Full Diagnostic on iPhone Safari, Android Chrome and a desktop browser. Browser APIs vary, so "Unavailable" for restricted APIs such as battery/network details can be expected.
+Also run both Quick Check and Full Diagnostic on iPhone Safari, Android Chrome, desktop Chrome/Edge/Firefox and macOS Safari when available. Browser APIs vary, so "Unavailable" for restricted APIs such as battery/network details can be expected.
 
 # PWA / Add to Home Screen
 
 The project includes a web app manifest, icons and a service worker. On supported browsers it can be installed as a standalone web app. On iPhone, open the production HTTPS site in Safari and use **Share → Add to Home Screen**.
 
-The service worker caches only same-origin static assets. External diagnostic/speed-test requests are intentionally not intercepted.
+The service worker caches same-origin static assets but explicitly bypasses `/ping.txt`, so latency probes always use the network. External service and speed-test requests are not intercepted.
 
 # Google Search setup
 
@@ -215,15 +219,23 @@ python3 -m http.server 8080
 
 Open `http://localhost:8080`. Browsers treat localhost as a trustworthy development context for many secure-context APIs, but production should always use HTTPS.
 
+Run the dependency-free automated checks with Node.js and Python:
+
+```bash
+node --test tests/app.test.js tests/metrics.test.js
+python tests/validate_site.py
+```
+
 ## Pre-deployment checks
 
 - Homepage loads without console-breaking errors.
 - Quick Check completes.
 - Full Diagnostic completes or gracefully reports blocked third-party requests.
-- Layout works at 320 px, 375/390 px, tablet and desktop widths.
+- Layout works at 320, 350, 375, 390, 430, 768 and 1024+ px widths.
 - Navigation pages return HTTP 200.
 - `manifest.webmanifest` parses as JSON.
 - Service worker registers on HTTPS/localhost.
+- Production DevTools shows each `ping.txt` probe transferred from the network, never from the service worker, memory cache or disk cache.
 - No duplicate HTML IDs.
 - No placeholder domains or email addresses remain in production.
 - `sitemap.xml` uses the real canonical domain.
@@ -243,11 +255,14 @@ git push
 
 With GitHub connected to Cloudflare Pages, Cloudflare will deploy the commit automatically.
 
+When changing the homepage CSS or diagnostic JavaScript, bump the shared `?v=` asset query and the service worker `CACHE` version together so existing browsers cannot mix old and new files during rollout.
+
 # Diagnostic accuracy notes
 
-- Latency is browser HTTP request timing, not ICMP ping.
-- Request loss is an application-layer estimate, not raw packet loss.
-- Jitter is calculated from browser request timing samples.
+- Latency is the median successful timing from sequential requests to the same-origin `/ping.txt` endpoint. It is a browser HTTP RTT approximation, not ICMP ping.
+- Jitter is the mean absolute difference between consecutive successful timings from that dedicated probe sequence.
+- Request loss is the share of measured `/ping.txt` requests that fail. It is an application-layer estimate, not raw packet loss.
+- Configured service checks run separately and never contribute timings or failures to latency, jitter or request loss.
 - Throughput depends on the remote test endpoint and browser behavior.
 - Safari may hide battery, memory and network-type information.
 - The security score is a browser-visible signal score, not a network penetration test.
