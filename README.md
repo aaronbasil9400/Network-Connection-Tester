@@ -1,4 +1,4 @@
-# Connection Health
+# NetVitals
 
 A static, mobile-first browser diagnostic for internet reachability, latency, jitter, application-layer request loss, adaptive download/upload testing, browser-visible network information, device information and connection security signals.
 
@@ -11,7 +11,7 @@ For this project, static hosting is the best performance/cost fit because the di
 ## Project structure
 
 ```text
-connection-health-site/
+netvitals-site/
 ├── index.html
 ├── about/
 ├── how-it-works/
@@ -36,19 +36,18 @@ connection-health-site/
 
 ## Before your first public deployment
 
-1. Choose and buy your domain.
-2. Search-and-replace **`https://example.com`** with your real canonical origin in `index.html`, all content pages, `robots.txt`, `sitemap.xml`, and `assets/js/config.js`.
-3. Replace `contact@example.com` and `privacy@example.com` with addresses you monitor.
-4. Review the Privacy Policy and Terms templates for your actual jurisdiction and business. They are starter content, not legal advice.
-5. Keep `enableAds: false` until your AdSense setup is ready.
+1. Point `netvitals.net` at the production host and enforce HTTPS.
+2. Create and monitor `contact@netvitals.net` and `privacy@netvitals.net`, or replace them site-wide.
+3. Review the Privacy Policy and Terms for your actual jurisdiction and business. They are not legal advice.
+4. Keep `enableAds: false` until your AdSense site setup is approved and privacy messaging is configured.
 
-A useful check before committing:
+A useful AdSense placeholder check before committing:
 
 ```bash
-grep -R "example.com" .
+rg "YOUR_PUBLISHER_ID|YOUR_OPTIONAL_AD_UNIT_ID" .
 ```
 
-The command should return no placeholder production URLs after configuration.
+The command should return no results after the real AdSense values are configured.
 
 # Hosting with Cloudflare Pages
 
@@ -59,7 +58,7 @@ Create an empty repository, then from this project folder:
 ```bash
 git init
 git add .
-git commit -m "Initial Connection Health website"
+git commit -m "Initial NetVitals website"
 git branch -M main
 git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git
 git push -u origin main
@@ -82,12 +81,12 @@ Cloudflare custom-domain documentation: https://developers.cloudflare.com/pages/
 Check these URLs after deployment:
 
 ```text
-https://YOUR_DOMAIN/
-https://YOUR_DOMAIN/manifest.webmanifest
-https://YOUR_DOMAIN/service-worker.js
-https://YOUR_DOMAIN/robots.txt
-https://YOUR_DOMAIN/sitemap.xml
-https://YOUR_DOMAIN/ads.txt
+https://netvitals.net/
+https://netvitals.net/manifest.webmanifest
+https://netvitals.net/service-worker.js
+https://netvitals.net/robots.txt
+https://netvitals.net/sitemap.xml
+https://netvitals.net/ads.txt
 ```
 
 Also run both Quick Check and Full Diagnostic on iPhone Safari, Android Chrome and a desktop browser. Browser APIs vary, so "Unavailable" for restricted APIs such as battery/network details can be expected.
@@ -102,7 +101,7 @@ The service worker caches only same-origin static assets. External diagnostic/sp
 
 1. Add the production domain to Google Search Console.
 2. Verify ownership using one of Google's supported methods.
-3. Submit `https://YOUR_DOMAIN/sitemap.xml`.
+3. Submit `https://netvitals.net/sitemap.xml`.
 4. Confirm `robots.txt` does not block the pages you want indexed.
 5. Request indexing for the homepage after launch.
 
@@ -159,15 +158,16 @@ Use the value shown in your own AdSense account rather than copying an example p
 Edit `assets/js/config.js`:
 
 ```js
-window.CONNECTION_HEALTH_CONFIG = Object.freeze({
-  siteName: "Connection Health",
-  siteUrl: "https://YOUR_DOMAIN",
+window.NETVITALS_CONFIG = Object.freeze({
+  siteName: "NetVitals",
+  siteUrl: "https://netvitals.net",
   adsenseClient: "ca-pub-YOUR_PUBLISHER_ID",
+  adsenseSlot: "YOUR_OPTIONAL_AD_UNIT_ID",
   enableAds: true
 });
 ```
 
-The included `assets/js/ads.js` will load Google's AdSense library only when `enableAds` is `true` and the publisher ID has the expected `ca-pub-...` form. Ad containers remain hidden when ads are disabled, so they do not leave large empty gaps before monetization.
+The included `assets/js/ads.js` loads Google's AdSense library only when `enableAds` is `true` and the publisher ID has the expected `ca-pub-...` form. This supports site verification and Auto ads across every page. The homepage's manual responsive unit is initialized only when `adsenseSlot` is a numeric ad-unit ID; otherwise its container remains hidden.
 
 ### 6. Ad placement strategy
 
@@ -225,7 +225,7 @@ Open `http://localhost:8080`. Browsers treat localhost as a trustworthy developm
 - `manifest.webmanifest` parses as JSON.
 - Service worker registers on HTTPS/localhost.
 - No duplicate HTML IDs.
-- No `example.com`/placeholder emails remain in production.
+- No placeholder domains or email addresses remain in production.
 - `sitemap.xml` uses the real canonical domain.
 - `robots.txt` points to the real sitemap.
 - `ads.txt` contains your real publisher entry only when AdSense supplies it.
@@ -254,4 +254,4 @@ With GitHub connected to Cloudflare Pages, Cloudflare will deploy the commit aut
 
 # License / ownership
 
-Add the license you want before making the repository public. If you want to keep commercial reuse restricted, do not automatically add an open-source license without understanding its terms.
+NetVitals was developed by Aaron Basil Raj. Add the license you want before making the repository public. If you want to keep commercial reuse restricted, do not automatically add an open-source license without understanding its terms.

@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://example.com/</loc></url>
-  <url><loc>https://example.com/about/</loc></url>
-  <url><loc>https://example.com/how-it-works/</loc></url>
-  <url><loc>https://example.com/privacy/</loc></url>
-  <url><loc>https://example.com/terms/</loc></url>
-  <url><loc>https://example.com/contact/</loc></url>
-  <url><loc>https://example.com/guides/what-is-latency/</loc></url>
-  <url><loc>https://example.com/guides/what-is-jitter/</loc></url>
-  <url><loc>https://example.com/guides/internet-speed-for-gaming/</loc></url>
-  <url><loc>https://example.com/guides/internet-speed-for-streaming/</loc></url>
-  <url><loc>https://example.com/guides/why-is-my-wifi-slow/</loc></url>
-  <url><loc>https://example.com/guides/wifi-vs-5g/</loc></url>
-  <url><loc>https://example.com/guides/how-speed-tests-work/</loc></url>
+  <url><loc>https://netvitals.net/</loc></url>
+  <url><loc>https://netvitals.net/about/</loc></url>
+  <url><loc>https://netvitals.net/how-it-works/</loc></url>
+  <url><loc>https://netvitals.net/privacy/</loc></url>
+  <url><loc>https://netvitals.net/terms/</loc></url>
+  <url><loc>https://netvitals.net/contact/</loc></url>
+  <url><loc>https://netvitals.net/guides/what-is-latency/</loc></url>
+  <url><loc>https://netvitals.net/guides/what-is-jitter/</loc></url>
+  <url><loc>https://netvitals.net/guides/internet-speed-for-gaming/</loc></url>
+  <url><loc>https://netvitals.net/guides/internet-speed-for-streaming/</loc></url>
+  <url><loc>https://netvitals.net/guides/why-is-my-wifi-slow/</loc></url>
+  <url><loc>https://netvitals.net/guides/wifi-vs-5g/</loc></url>
+  <url><loc>https://netvitals.net/guides/how-speed-tests-work/</loc></url>
 </urlset>

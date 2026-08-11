@@ -1,6 +1,6 @@
 {
-  "name": "Connection Health",
-  "short_name": "Connection Health",
+  "name": "NetVitals",
+  "short_name": "NetVitals",
   "description": "Browser-based internet speed, latency, jitter and request-loss diagnostic.",
   "start_url": "/",
   "scope": "/",
@@ -11,13 +11,20 @@
     {
       "src": "/assets/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/assets/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
