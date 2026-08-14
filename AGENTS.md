@@ -235,7 +235,37 @@ After editing:
 - run `python tests/validate_site.py`,
 - perform browser/manual tests when behavior is browser-dependent,
 - state what was actually tested,
-- update docs if measurement semantics or architecture changed.
+- synchronize documentation with the validated repository state using the rules below.
+
+## Documentation synchronization — required
+
+Documentation is part of the implementation contract. **After every code/configuration change, explicitly determine whether the repository documentation is still accurate.** Do not finish, commit, merge, or push a task with documentation that describes superseded behavior.
+
+Update the relevant files in the **same change** when implementation changes affect them:
+
+- product purpose, browser/platform constraints, deployment assumptions → `docs/PROJECT_CONTEXT.md`
+- measurement architecture, data flow, endpoints, storage, PWA/cache behavior → `docs/ARCHITECTURE.md`
+- accepted measurement/design choices and rationale → `docs/DECISIONS.md`
+- active files, renamed/moved files, task routing → `docs/FILE_MAP.md`
+- test commands, browser matrix, regression expectations → `docs/TESTING.md`
+- completed items, newly discovered defects, technical debt, priorities → `docs/TODO.md`
+- user-facing capabilities, setup, measurement definitions, deployment → `README.md`
+- permanent agent rules, active implementation pointers, measurement truth → `AGENTS.md`
+
+Rules:
+
+1. **Code plus validated runtime behavior/tests are the source of truth.** Documentation must describe the current validated implementation.
+2. If code and docs disagree, first determine whether the code change is intentional and validate it. Then update stale docs. Do not change working code merely to satisfy outdated documentation.
+3. When a TODO is completed, update/remove that TODO in the same change. Add newly discovered actionable debt when it materially affects future work.
+4. When measurement formulas, thresholds, sample counts, endpoints, cache versions, localStorage keys, filenames, browser requirements, security signals, or deployment behavior change, search the relevant docs for stale references and update all affected occurrences.
+5. Measurement wording is correctness-critical: keep latency, jitter, request loss, throughput, service checks, and browser-visible security claims synchronized with what the browser actually measures.
+6. Do not rewrite unrelated documentation or create doc churn. If a change has no documentation impact, leave docs unchanged.
+7. Do not place secrets, private values, or sensitive configuration into documentation.
+8. Before completion, review the final diff and explicitly report one of:
+   - `Documentation impact: Updated — <files>`
+   - `Documentation impact: Not required — <reason>`
+
+A task is not complete when its documentation impact has not been assessed.
 
 ## High-risk areas
 
@@ -265,6 +295,9 @@ Require regression tests:
 
 ### Measurement impact
 - state whether latency/jitter/loss/speed/score semantics changed
+
+### Documentation impact
+- `Updated — <files>` or `Not required — <reason>`
 
 ### Risks / follow-up
 - remaining issues only
