@@ -188,6 +188,18 @@ Do not load every guide for a diagnostic-code task.
 - `sitemap.xml`
 - `ads.txt`
 
+## Release process
+
+### `docs/RELEASE_CHECKLIST.md`
+
+Role:
+- pre-release validation and production smoke checks
+
+Read for:
+- release preparation
+- cache/version changes
+- deployment verification
+
 ## PWA/icon assets
 
 `assets/icons/**`
@@ -210,3 +222,4 @@ Do not inspect binary icons for ordinary diagnostic changes.
 | AdSense | `config.js` + `ads.js` + HTML pages + validator |
 | SEO | affected HTML + sitemap/robots + validator |
 | Site-wide release validation | all files referenced by `validate_site.py` |
+| Release preparation | `docs/RELEASE_CHECKLIST.md` + affected files |

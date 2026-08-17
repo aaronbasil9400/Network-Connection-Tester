@@ -81,6 +81,7 @@ Warm-ups are discarded from latency, jitter and request-loss calculations.
 │   ├── ARCHITECTURE.md
 │   ├── DECISIONS.md
 │   ├── FILE_MAP.md
+│   ├── RELEASE_CHECKLIST.md
 │   ├── TESTING.md
 │   └── TODO.md
 ├── tests/
@@ -112,7 +113,7 @@ Then open:
 
 ```bash
 node --test tests/app.test.js tests/metrics.test.js
-python tests/validate_site.py
+python3 tests/validate_site.py
 ```
 
 The validator checks site structure, JavaScript syntax, PWA/probe cache rules, metadata, AdSense consistency, and the Node tests.
@@ -157,6 +158,7 @@ This is intentionally designed to reduce unnecessary repository rereading and to
 - `docs/ARCHITECTURE.md` — measurement/data flow
 - `docs/DECISIONS.md` — why the system works this way
 - `docs/FILE_MAP.md` — task-to-file routing
+- `docs/RELEASE_CHECKLIST.md` — pre-release verification
 - `docs/TESTING.md` — validation strategy
 - `docs/TODO.md` — technical debt and roadmap
 

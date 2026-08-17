@@ -105,6 +105,8 @@ Response requirements:
 
 This deliberately isolates the network-quality probe from configurable third-party service checks.
 
+The displayed value is specific to the route between the visitor's browser and the NetVitals hosting path. It can differ substantially from ICMP ping, a game server, an Ookla server, or an ISP gateway, which use different routes and/or measurement methods.
+
 ## Cache protection
 
 `_headers` gives `/ping.txt`:
@@ -313,6 +315,10 @@ A release that changes these files should update cache/versioning consistently.
 - one-day cache for assets
 - no-cache for service worker
 - no-store for latency probe
+
+### Permissions Policy rationale
+
+The `Permissions-Policy` disables camera, microphone, and geolocation. NetVitals has no feature requiring those capabilities, and disabling them reduces unnecessary permission surface for a browser-based diagnostic. Do not relax this policy unless a new, documented feature requires the corresponding capability and its privacy implications have been reviewed.
 
 ## Testing architecture
 

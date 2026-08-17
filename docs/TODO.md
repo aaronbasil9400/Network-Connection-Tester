@@ -20,18 +20,6 @@ Add deterministic cases for:
 
 Protect Gaming, Video Calls, Streaming and Browsing classifications from accidental threshold drift.
 
-### [ ] Document latency reference more prominently in-product
-
-Current latency is same-origin HTTP RTT to the NetVitals hosting path.
-
-Add a concise UI/help explanation that this can differ substantially from:
-- ICMP ping,
-- a nearby game server,
-- an Ookla server,
-- a user's ISP gateway.
-
-This is especially useful when users compare NetVitals latency with conventional speed-test tools.
-
 ### [ ] Evaluate upload-test methodology
 
 Upload currently times a browser `fetch()` POST to Cloudflare using `mode: no-cors`.
@@ -183,15 +171,6 @@ A CSP must account for:
 
 Test thoroughly before enforcing.
 
-### [ ] Add Permissions-Policy reasoning to docs
-
-Current policy disables:
-- camera
-- microphone
-- geolocation
-
-Keep those disabled unless a feature genuinely requires them.
-
 ## P4 — PWA / release engineering
 
 ### [ ] Automate cache-version management
@@ -202,18 +181,6 @@ Currently developers must coordinate:
 - precache URLs
 
 Consider one release-version constant/build script to prevent mismatch.
-
-### [ ] Add a release checklist
-
-Include:
-- tests
-- validator
-- mobile browser checks
-- cache bump
-- sitemap/canonical
-- AdSense state
-- production `/ping.txt` cache verification
-- Cloudflare speed endpoint smoke test.
 
 ### [ ] Add deployment health monitoring
 

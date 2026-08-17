@@ -168,3 +168,17 @@ Reports and UI should continue describing:
 - security as browser-visible signals.
 
 This wording is part of correctness, not just marketing copy.
+
+---
+
+## ADR-018 — Disable unneeded device-location permissions
+**Status:** Accepted
+
+`Permissions-Policy` disables camera, microphone, and geolocation.
+
+Reason:
+- NetVitals has no current feature that needs these capabilities.
+- Keeping them disabled reduces permission surface and prevents accidental dependence on browser/device data outside the product's diagnostic scope.
+
+Consequence:
+Any future feature requiring one of these capabilities must justify it, update privacy documentation, and deliberately revise the policy with browser validation.

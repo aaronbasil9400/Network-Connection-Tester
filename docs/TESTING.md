@@ -8,7 +8,7 @@ Run from repository root:
 
 ```bash
 node --test tests/app.test.js tests/metrics.test.js
-python tests/validate_site.py
+python3 tests/validate_site.py
 ```
 
 `validate_site.py` also invokes Node syntax checks and the test files, so it is the main repository validation gate.

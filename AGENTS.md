@@ -232,7 +232,7 @@ Before editing:
 
 After editing:
 - run `node --test tests/app.test.js tests/metrics.test.js`,
-- run `python tests/validate_site.py`,
+- run `python3 tests/validate_site.py`,
 - perform browser/manual tests when behavior is browser-dependent,
 - state what was actually tested,
 - synchronize documentation with the validated repository state using the rules below.
