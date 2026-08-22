@@ -58,8 +58,8 @@ for icon in ['favicon.svg','favicon.ico','apple-touch-icon.png','icon-192.png','
 expected_ads_txt=f'google.com, pub-{ADSENSE_CLIENT.removeprefix("ca-pub-")}, DIRECT, f08c47fec0942fa0'
 if (ROOT/'ads.txt').read_text(encoding='utf-8').strip() != expected_ads_txt: errors.append('ads.txt does not contain exactly one matching AdSense publisher entry')
 
-metrics_script='<script src="/assets/js/metrics.js?v=3"></script>'
-app_script='<script src="/assets/js/app.js?v=3"></script>'
+metrics_script='<script src="/assets/js/metrics.js?v=4"></script>'
+app_script='<script src="/assets/js/app.js?v=4"></script>'
 if homepage.count(metrics_script) != 1: errors.append('homepage must load metrics.js exactly once')
 if homepage.count(app_script) != 1: errors.append('homepage must load app.js exactly once')
 if homepage.find(metrics_script) > homepage.find(app_script): errors.append('metrics.js must load before app.js')

@@ -99,7 +99,7 @@ Current measurements are:
 - **Latency:** median browser HTTP request timing to same-origin `/ping.txt`.
 - **Jitter:** mean absolute difference between consecutive successful measured latency samples.
 - **Request loss:** percentage of measured `/ping.txt` requests that fail.
-- **Download/upload:** browser transfers against `speed.cloudflare.com`.
+- **Download/upload:** browser timed streaming transfers against `speed.cloudflare.com`.
 - **Service checks:** browser `no-cors` fetch reachability checks to configured HTTPS endpoints.
 - **Security score:** only browser-visible page/context signals.
 
@@ -118,6 +118,23 @@ Defined in `metrics.js`:
 Warm-up probes are discarded from latency, jitter, and request-loss calculations.
 
 Measured probes run sequentially.
+
+### Speed profile
+
+Defined in `metrics.js` as `SPEED_PROFILE`:
+
+- Quick throughput window: 4000 ms
+- Full throughput window: 8000 ms
+- ramp discard: first 500 ms of each measured download window
+- minimum steady-state window: 1000 ms (shorter windows fall back to the post-first-byte average)
+- settle pause before download and between download/upload: 600 ms
+- download chunk: 25 MB per request; upload chunk: 2 MB per POST
+- data caps: 60 MB (Quick), 250 MB (Full) — whichever limit ends the phase first
+- one warm-up transfer per direction, discarded from the result
+
+Download measures a fixed-duration streamed window; the clock starts at the first received byte, so connection setup is excluded. Upload aggregates repeated fixed-size POSTs after discarding one warm-up transfer.
+
+Steady-state math (`steadyStateThroughput`, `aggregateThroughput`) lives in `metrics.js` and is unit-tested in `tests/metrics.test.js`.
 
 ## Quality score
 
@@ -211,7 +228,7 @@ Preserve unless deliberately redesigning:
 
 ## Cache/version discipline
 
-The app currently uses asset version `v=3` and service-worker cache `netvitals-v3`.
+The app currently uses asset version `v=4` and service-worker cache `netvitals-v4`.
 
 When changing cached core CSS/JS:
 

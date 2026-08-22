@@ -4,11 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   PROBE_PROFILE,
+  SPEED_PROFILE,
   median,
   calculateJitter,
   summarizeProbeResults,
   hasInternetAccess,
-  runProbeSequence
+  runProbeSequence,
+  steadyStateThroughput,
+  aggregateThroughput
 } = require('../assets/js/metrics.js');
 
 test('probe profile matches the approved mobile-first sampling limits', () => {
@@ -18,6 +21,21 @@ test('probe profile matches the approved mobile-first sampling limits', () => {
     fullSamples: 16,
     spacingMs: 100,
     timeoutMs: 2000
+  });
+});
+
+test('speed profile fixes the measurement windows, ramp discard, and data caps', () => {
+  assert.deepEqual(SPEED_PROFILE, {
+    warmupTransfers: 1,
+    quickDurationMs: 4000,
+    fullDurationMs: 8000,
+    rampDiscardMs: 500,
+    minWindowMs: 1000,
+    settleMs: 600,
+    downloadChunkBytes: 25000000,
+    uploadChunkBytes: 2000000,
+    maxQuickBytes: 60000000,
+    maxFullBytes: 250000000
   });
 });
 
@@ -157,4 +175,72 @@ test('a rejected measured probe becomes a failed result and the sequence continu
   assert.equal(summary.successes, PROBE_PROFILE.quickSamples - 1);
   assert.equal(summary.failures, 1);
   assert.equal(summary.loss, 12.5);
+});
+
+test('steady-state throughput ignores the ramp and reports only the sustained window', () => {
+  const chunks = [
+    { atMs: 0, bytes: 0 },
+    { atMs: 100, bytes: 125000 },
+    { atMs: 200, bytes: 250000 },
+    { atMs: 300, bytes: 375000 },
+    { atMs: 400, bytes: 500000 },
+    { atMs: 500, bytes: 625000 },
+    { atMs: 600, bytes: 1625000 },
+    { atMs: 700, bytes: 2625000 },
+    { atMs: 800, bytes: 3625000 },
+    { atMs: 900, bytes: 4625000 },
+    { atMs: 1000, bytes: 5625000 },
+    { atMs: 1100, bytes: 6625000 },
+    { atMs: 1200, bytes: 7625000 },
+    { atMs: 1300, bytes: 8625000 },
+    { atMs: 1400, bytes: 9625000 },
+    { atMs: 1500, bytes: 10625000 }
+  ];
+  const rampRate = 625000 * 8 / 0.5 / 1e6;
+  const steady = steadyStateThroughput(chunks);
+  assert.equal(steady, 80);
+  assert.ok(Math.abs(steady - rampRate) > 20, 'ramp contamination must be excluded');
+});
+
+test('steady-state throughput falls back to the post-first-byte average when the window is too short', () => {
+  const chunks = [
+    { atMs: 0, bytes: 0 },
+    { atMs: 100, bytes: 12500 },
+    { atMs: 200, bytes: 25000 },
+    { atMs: 300, bytes: 37500 },
+    { atMs: 400, bytes: 50000 }
+  ];
+  assert.ok(Math.abs(steadyStateThroughput(chunks) - (50000 * 8 / 0.4 / 1e6)) < 1e-12);
+});
+
+test('steady-state throughput handles empty, degenerate, unordered, and flat inputs', () => {
+  assert.equal(Number.isNaN(steadyStateThroughput([])), true);
+  assert.equal(Number.isNaN(steadyStateThroughput([{ atMs: 10, bytes: 500 }])), true);
+  assert.equal(Number.isNaN(steadyStateThroughput(null)), true);
+  assert.equal(Number.isNaN(steadyStateThroughput([
+    { atMs: 0, bytes: 4000 },
+    { atMs: 2000, bytes: 4000 }
+  ])), true);
+  const shuffled = [
+    { atMs: 1500, bytes: 10625000 },
+    { atMs: 0, bytes: 0 },
+    { atMs: 500, bytes: 625000 }
+  ];
+  assert.equal(steadyStateThroughput(shuffled), 80);
+});
+
+test('aggregate throughput sums transfer bytes over summed elapsed time and ignores invalid entries', () => {
+  assert.ok(Math.abs(aggregateThroughput([
+    { sec: 1, bytes: 1000000 },
+    { sec: 1, bytes: 2000000 }
+  ]) - 12) < 1e-12);
+  assert.ok(Math.abs(aggregateThroughput([
+    null,
+    { sec: Number.NaN, bytes: 999999 },
+    { sec: 2, bytes: 0 },
+    { sec: -1, bytes: 500000 },
+    { sec: 0.5, bytes: 500000 }
+  ]) - 8) < 1e-12);
+  assert.equal(Number.isNaN(aggregateThroughput([])), true);
+  assert.equal(Number.isNaN(aggregateThroughput(null)), true);
 });

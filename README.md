@@ -1,6 +1,6 @@
 # NetVitals
 
-NetVitals is a static, mobile-first browser diagnostic for internet reachability, HTTP latency, jitter, application-layer request loss, adaptive download/upload throughput, browser-visible connection information, device information, and browser-visible security signals.
+NetVitals is a static, mobile-first browser diagnostic for internet reachability, HTTP latency, jitter, application-layer request loss, fixed-duration download/upload throughput windows against Cloudflare, browser-visible connection information, device information, and browser-visible security signals.
 
 Production site:
 
@@ -40,7 +40,9 @@ Percentage of measured `/ping.txt` requests that fail.
 This is **application-layer request loss**, not raw packet loss.
 
 ### Download / upload
-Adaptive browser transfers using Cloudflare speed-test endpoints.
+Fixed-duration streamed transfers using Cloudflare speed-test endpoints.
+
+Each direction runs a 4 s (Quick) or 8 s (Full) measurement window after one discarded warm-up transfer. The download clock starts at the first received byte (connection setup excluded) and the first 500 ms of the window is discarded as TCP ramp-up, so the reported value is a steady-state rate rather than an average that includes connection startup.
 
 ### Security
 Only signals visible to a normal web page, such as HTTPS/secure context, mixed content, endpoint transport, embedding, and Web Crypto availability.
@@ -57,8 +59,11 @@ Measurement profile:
 | Measured latency probes | 8 | 16 |
 | Probe spacing | 100 ms | 100 ms |
 | Probe timeout | 2000 ms | 2000 ms |
+| Download window | 4 s | 8 s |
+| Upload window | 4 s | 8 s |
+| Throughput data cap | 60 MB | 250 MB |
 
-Warm-ups are discarded from latency, jitter and request-loss calculations.
+Warm-ups are discarded from latency, jitter and request-loss calculations. Each throughput direction discards one warm-up transfer, and the download result excludes the first 500 ms ramp-up of the measured window.
 
 ## Project structure
 

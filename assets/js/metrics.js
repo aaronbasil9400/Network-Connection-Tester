@@ -13,6 +13,19 @@
     timeoutMs: 2000
   });
 
+  const SPEED_PROFILE = Object.freeze({
+    warmupTransfers: 1,
+    quickDurationMs: 4000,
+    fullDurationMs: 8000,
+    rampDiscardMs: 500,
+    minWindowMs: 1000,
+    settleMs: 600,
+    downloadChunkBytes: 25000000,
+    uploadChunkBytes: 2000000,
+    maxQuickBytes: 60000000,
+    maxFullBytes: 250000000
+  });
+
   function median(values) {
     if (!values.length) return NaN;
     const sorted = [...values].sort((a, b) => a - b);
@@ -53,6 +66,53 @@
     return browserOnline !== false && (probeSuccesses > 0 || reachableServices > 0);
   }
 
+  function steadyStateThroughput(chunks, options = {}) {
+    const rampMs = Number.isFinite(options.rampDiscardMs)
+      ? options.rampDiscardMs
+      : SPEED_PROFILE.rampDiscardMs;
+    const minWindowMs = Number.isFinite(options.minWindowMs)
+      ? options.minWindowMs
+      : SPEED_PROFILE.minWindowMs;
+    if (!Array.isArray(chunks)) return NaN;
+    const points = chunks
+      .filter(point => point && Number.isFinite(point.atMs) && Number.isFinite(point.bytes))
+      .sort((a, b) => a.atMs - b.atMs);
+    if (points.length < 2) return NaN;
+    const startAtMs = points[0].atMs;
+    const last = points[points.length - 1];
+    if (last.bytes <= points[0].bytes) return NaN;
+
+    let baseline = null;
+    for (const point of points) {
+      if (point.atMs - startAtMs <= rampMs) baseline = point;
+      else break;
+    }
+    if (baseline === null) baseline = points[0];
+    const windowBytes = last.bytes - baseline.bytes;
+    const windowMs = last.atMs - baseline.atMs;
+    if (windowMs >= minWindowMs && windowBytes > 0) {
+      return windowBytes * 8 / (windowMs / 1000) / 1e6;
+    }
+    const totalSec = (last.atMs - startAtMs) / 1000;
+    if (totalSec <= 0) return NaN;
+    return (last.bytes - points[0].bytes) * 8 / totalSec / 1e6;
+  }
+
+  function aggregateThroughput(transfers) {
+    if (!Array.isArray(transfers)) return NaN;
+    const ok = transfers.filter(transfer =>
+      transfer &&
+      Number.isFinite(transfer.sec) &&
+      transfer.sec > 0 &&
+      Number.isFinite(transfer.bytes) &&
+      transfer.bytes > 0);
+    if (!ok.length) return NaN;
+    const bytes = ok.reduce((total, transfer) => total + transfer.bytes, 0);
+    const seconds = ok.reduce((total, transfer) => total + transfer.sec, 0);
+    if (seconds <= 0) return NaN;
+    return bytes * 8 / seconds / 1e6;
+  }
+
   async function runProbeSequence({ probe, full = false, wait, onMeasured } = {}) {
     if (typeof probe !== 'function') throw new TypeError('probe must be a function');
     const sleep = wait || (ms => new Promise(resolve => setTimeout(resolve, ms)));
@@ -85,10 +145,13 @@
 
   return Object.freeze({
     PROBE_PROFILE,
+    SPEED_PROFILE,
     median,
     calculateJitter,
     summarizeProbeResults,
     hasInternetAccess,
-    runProbeSequence
+    runProbeSequence,
+    steadyStateThroughput,
+    aggregateThroughput
   });
 });

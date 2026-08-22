@@ -145,7 +145,7 @@ Useful report fields:
 - Quick vs Full
 - measured sample count
 - NetVitals version
-- throughput payload sizes
+- throughput window/duration and bytes transferred
 - browser
 - timestamp/timezone
 
@@ -176,7 +176,7 @@ Test thoroughly before enforcing.
 ### [ ] Automate cache-version management
 
 Currently developers must coordinate:
-- `?v=3` references
+- `?v=4` references
 - service-worker cache name
 - precache URLs
 

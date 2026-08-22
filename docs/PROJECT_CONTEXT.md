@@ -102,7 +102,7 @@ This is an application-layer request-failure estimate and must not be called raw
 
 Download and upload use Cloudflare's public speed-test transfer endpoints.
 
-Payload sizes adapt based on the first transfer and whether Quick or Full mode is selected.
+Each direction measures a fixed-duration window (4 s Quick, 8 s Full) with one discarded warm-up transfer; download excludes the first 500 ms of the window as TCP ramp-up.
 
 ### Service checks
 
@@ -126,7 +126,7 @@ Difference in latency sampling:
 
 Both discard 2 initial warm-up probes.
 
-Speed-test adaptive sizes may also be larger in Full mode.
+Throughput windows are longer in Full mode (8 s vs 4 s per direction).
 
 ## Local state
 

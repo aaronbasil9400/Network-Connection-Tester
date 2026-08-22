@@ -1,7 +1,7 @@
 'use strict';
 const metrics=window.NetVitalsMetrics;
 if(!metrics)throw new Error('NetVitals metrics module failed to load.');
-const {PROBE_PROFILE,hasInternetAccess,runProbeSequence}=metrics;
+const {PROBE_PROFILE,SPEED_PROFILE,hasInternetAccess,runProbeSequence,steadyStateThroughput,aggregateThroughput}=metrics;
 const STORAGE_KEY='phone-status-app-v3', HISTORY_KEY='phone-status-history-v4';
 const defaults={timeoutMs:6000,intervalSec:0,services:[{name:'Cloudflare',url:'https://www.cloudflare.com/'},{name:'Google',url:'https://www.google.com/'},{name:'Microsoft',url:'https://www.microsoft.com/'}]};
 const state={settings:loadJson(STORAGE_KEY,defaults),history:loadJson(HISTORY_KEY,[]),timer:null,checking:false,results:[],lastResult:null,securityResult:null};
@@ -58,10 +58,105 @@ async function latencyProbe(timeoutMs=PROBE_PROFILE.timeoutMs){const c=new Abort
 async function runNetworkQualityProbe(full){updateProgress(7,'Warming up the latency path…');return runProbeSequence({full,probe:()=>latencyProbe(PROBE_PROFILE.timeoutMs),onMeasured:({index,total})=>updateProgress(10+Math.round(((index+1)/total)*20),`Measuring latency and stability · sample ${index+1} of ${total}`)})}
 async function runServiceChecks(){updateProgress(33,'Checking configured services…');const results=await Promise.all(state.settings.services.map(service=>serviceProbe(service.url,state.settings.timeoutMs)));const reachable=results.filter(result=>result.ok).length;return{results,reachable,total:results.length}}
 function latencyStatus(ms){if(!Number.isFinite(ms))return['Unknown','warn'];if(ms<80)return['Excellent','good'];if(ms<180)return['Good','good'];if(ms<350)return['Fair','warn'];return['Poor','bad']} function jitterStatus(ms){if(!Number.isFinite(ms))return['Unknown','warn'];if(ms<10)return['Excellent','good'];if(ms<30)return['Good','good'];if(ms<60)return['Fair','warn'];return['Poor','bad']} function lossStatus(p){if(!Number.isFinite(p))return['Unknown','warn'];if(p===0)return['Excellent','good'];if(p<=5)return['Good','good'];if(p<=15)return['High','warn'];return['Severe','bad']} function speedStatus(m){if(!Number.isFinite(m))return['Unavailable','warn'];if(m>=100)return['Excellent','good'];if(m>=25)return['Fast','good'];if(m>=5)return['Usable','warn'];return['Slow','bad']}
-async function downloadTransfer(bytes){const c=new AbortController(),t=setTimeout(()=>c.abort(),20000),start=performance.now();try{const res=await fetch(`https://speed.cloudflare.com/__down?bytes=${bytes}&_=${Date.now()}`,{cache:'no-store',signal:c.signal,credentials:'omit'});if(!res.ok)throw new Error(`HTTP ${res.status}`);const data=await res.arrayBuffer(),sec=(performance.now()-start)/1000;return(data.byteLength*8)/sec/1e6}finally{clearTimeout(t)}}
-async function uploadTransfer(bytes){const payload=new Blob(['0'.repeat(bytes)],{type:'text/plain'}),c=new AbortController(),t=setTimeout(()=>c.abort(),20000),start=performance.now();try{await fetch(`https://speed.cloudflare.com/__up?_=${Date.now()}`,{method:'POST',body:payload,mode:'no-cors',cache:'no-store',signal:c.signal,credentials:'omit'});return(bytes*8)/((performance.now()-start)/1000)/1e6}finally{clearTimeout(t)}}
-function adaptiveDownloadBytes(first,full){if(!full)return 2_000_000;if(first>=150)return 25_000_000;if(first>=60)return 10_000_000;if(first>=20)return 5_000_000;return 2_000_000} function adaptiveUploadBytes(first,full){if(!full)return 1_000_000;if(first>=80)return 10_000_000;if(first>=25)return 5_000_000;if(first>=8)return 2_000_000;return 1_000_000}
-async function runSpeedTests(full){els.downloadMetric.textContent='Testing…';els.uploadMetric.textContent='Waiting…';setPill(els.downloadPill,'Testing','warn');setPill(els.uploadPill,'Waiting','');let download=NaN,upload=NaN,downBytes=2_000_000,upBytes=1_000_000;try{updateProgress(38,'Testing download speed…');const first=await downloadTransfer(2_000_000);downBytes=adaptiveDownloadBytes(first,full);download=downBytes===2_000_000?first:await downloadTransfer(downBytes);els.downloadMetric.textContent=`${download.toFixed(download>=100?0:1)} Mbps`;const [l,c]=speedStatus(download);setPill(els.downloadPill,l,c);els.downloadDetail.textContent=`Measured using ${(downBytes/1e6).toFixed(0)} MB Cloudflare download.`}catch(e){els.downloadMetric.textContent='Unavailable';setPill(els.downloadPill,'Failed','warn');els.downloadDetail.textContent=`Download test failed${e?.name==='AbortError'?' (timed out)':''}.`}try{updateProgress(64,'Testing upload speed…');els.uploadMetric.textContent='Testing…';setPill(els.uploadPill,'Testing','warn');const first=await uploadTransfer(1_000_000);upBytes=adaptiveUploadBytes(first,full);upload=upBytes===1_000_000?first:await uploadTransfer(upBytes);els.uploadMetric.textContent=`${upload.toFixed(upload>=100?0:1)} Mbps`;const [l,c]=speedStatus(upload);setPill(els.uploadPill,l,c);els.uploadDetail.textContent=`Measured using ${(upBytes/1e6).toFixed(0)} MB Cloudflare upload.`}catch(e){els.uploadMetric.textContent='Unavailable';setPill(els.uploadPill,'Failed','warn');els.uploadDetail.textContent=`Upload test failed${e?.name==='AbortError'?' (timed out)':''}.`}return{download,upload,downBytes,upBytes}}
+async function timedDownload(full){
+  const durationMs=full?SPEED_PROFILE.fullDurationMs:SPEED_PROFILE.quickDurationMs;
+  const maxBytes=full?SPEED_PROFILE.maxFullBytes:SPEED_PROFILE.maxQuickBytes;
+  const controller=new AbortController(),abortTimer=setTimeout(()=>controller.abort(),durationMs+20000);
+  const chunks=[];let bytes=0,startAtMs=null,failure=null;
+  try{
+    try{
+      const warmup=await fetch(`https://speed.cloudflare.com/__down?bytes=1000000&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
+      try{await warmup.body?.cancel()}catch{}
+    }catch{}
+    while((startAtMs===null||performance.now()-startAtMs<durationMs)&&bytes<maxBytes&&!failure){
+      let res;
+      try{
+        res=await fetch(`https://speed.cloudflare.com/__down?bytes=${Math.min(SPEED_PROFILE.downloadChunkBytes,maxBytes-bytes)}&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
+      }catch(e){failure=e;break}
+      if(!res.ok||!res.body){failure=new Error(`HTTP ${res.status}`);break}
+      const reader=res.body.getReader();
+      try{
+        for(;;){
+          const{done,value}=await reader.read();
+          if(done)break;
+          if(startAtMs===null)startAtMs=performance.now();
+          bytes+=value.byteLength;
+          chunks.push({atMs:performance.now()-startAtMs,bytes});
+          if(performance.now()-startAtMs>=durationMs||bytes>=maxBytes)break;
+        }
+      }catch(e){if(e?.name!=='AbortError'||!chunks.length)failure=e}
+      finally{try{await reader.cancel()}catch{}}
+    }
+  }finally{clearTimeout(abortTimer)}
+  const mbps=steadyStateThroughput(chunks);
+  if(!Number.isFinite(mbps))throw failure||new Error('Insufficient download data');
+  return{mbps,bytes,durationSec:startAtMs===null?0:(chunks[chunks.length-1]?.atMs||0)/1000};
+}
+async function timedUpload(full){
+  const durationMs=full?SPEED_PROFILE.fullDurationMs:SPEED_PROFILE.quickDurationMs;
+  const maxBytes=full?SPEED_PROFILE.maxFullBytes:SPEED_PROFILE.maxQuickBytes;
+  const controller=new AbortController(),abortTimer=setTimeout(()=>controller.abort(),durationMs+20000);
+  const transfers=[];let sent=0,failure=null;
+  const payload=new Blob(['0'.repeat(SPEED_PROFILE.uploadChunkBytes)],{type:'application/octet-stream'});
+  try{
+    try{
+      await fetch(`https://speed.cloudflare.com/__up?_=${Date.now()}_${Math.random()}`,{method:'POST',body:new Blob(['0'.repeat(500000)],{type:'application/octet-stream'}),mode:'no-cors',cache:'no-store',signal:controller.signal,credentials:'omit'});
+    }catch{}
+    const started=performance.now();
+    while(performance.now()-started<durationMs&&sent<maxBytes&&!failure){
+      const t0=performance.now();
+      try{
+        await fetch(`https://speed.cloudflare.com/__up?_=${Date.now()}_${Math.random()}`,{method:'POST',body:payload,mode:'no-cors',cache:'no-store',signal:controller.signal,credentials:'omit'});
+        sent+=SPEED_PROFILE.uploadChunkBytes;
+        transfers.push({bytes:SPEED_PROFILE.uploadChunkBytes,sec:(performance.now()-t0)/1000});
+      }catch(e){failure=e}
+    }
+  }finally{clearTimeout(abortTimer)}
+  const mbps=aggregateThroughput(transfers);
+  if(!Number.isFinite(mbps))throw failure||new Error('Insufficient upload data');
+  return{mbps,bytes:sent};
+}
+async function runSpeedTests(full){
+  els.downloadMetric.textContent='Testing…';
+  els.uploadMetric.textContent='Waiting…';
+  setPill(els.downloadPill,'Testing','warn');
+  setPill(els.uploadPill,'Waiting','');
+  const windowLabel=full?'8':'4';
+  let download=NaN,upload=NaN,downBytes=0,upBytes=0;
+  try{
+    updateProgress(38,'Letting the connection settle before the download test…');
+    await sleep(SPEED_PROFILE.settleMs);
+    updateProgress(40,'Testing download speed…');
+    els.downloadDetail.textContent=`Streaming a ${windowLabel}-second Cloudflare download window…`;
+    const down=await timedDownload(full);
+    download=down.mbps;downBytes=down.bytes;
+    els.downloadMetric.textContent=`${download.toFixed(download>=100?0:1)} Mbps`;
+    const [dl,dc]=speedStatus(download);
+    setPill(els.downloadPill,dl,dc);
+    els.downloadDetail.textContent=`Steady-state rate from ${(downBytes/1e6).toFixed(0)} MB over ${down.durationSec.toFixed(1)} s · first ${SPEED_PROFILE.rampDiscardMs/1000} s ramp discarded.`;
+  }catch(e){
+    els.downloadMetric.textContent='Unavailable';
+    setPill(els.downloadPill,'Failed','warn');
+    els.downloadDetail.textContent=`Download test failed${e?.name==='AbortError'?' (timed out)':''}.`;
+  }
+  try{
+    updateProgress(64,'Testing upload speed…');
+    els.uploadMetric.textContent='Testing…';
+    setPill(els.uploadPill,'Testing','warn');
+    els.uploadDetail.textContent=`Streaming a ${windowLabel}-second Cloudflare upload window…`;
+    const up=await timedUpload(full);
+    upload=up.mbps;upBytes=up.bytes;
+    els.uploadMetric.textContent=`${upload.toFixed(upload>=100?0:1)} Mbps`;
+    const [ul,uc]=speedStatus(upload);
+    setPill(els.uploadPill,ul,uc);
+    els.uploadDetail.textContent=`Aggregate rate from repeated uploads totalling ${(upBytes/1e6).toFixed(0)} MB · first transfer discarded as warm-up.`;
+  }catch(e){
+    els.uploadMetric.textContent='Unavailable';
+    setPill(els.uploadPill,'Failed','warn');
+    els.uploadDetail.textContent=`Upload test failed${e?.name==='AbortError'?' (timed out)':''}.`;
+  }
+  return{download,upload,downBytes,upBytes};
+}
 function qualityScore(r){let score=100;if(!r.internetOk)return 10;score-=clamp(r.loss*2.4,0,35);if(Number.isFinite(r.latency))score-=clamp((r.latency-50)/8,0,20);else score-=20;if(Number.isFinite(r.jitter))score-=clamp((r.jitter-8)/3,0,15);else score-=15;if(Number.isFinite(r.download))score-=r.download>=50?0:r.download>=25?3:r.download>=10?7:r.download>=5?12:20;else score-=15;if(Number.isFinite(r.upload))score-=r.upload>=20?0:r.upload>=10?3:r.upload>=5?7:r.upload>=2?12:15;else score-=12;return clamp(Math.round(score),0,100)}
 function scoreLabel(score){if(score>=90)return['Excellent','good'];if(score>=78)return['Good','good'];if(score>=60)return['Fair','warn'];return['Poor','bad']}
 function classifyUseCase(type,r){if(!r.internetOk)return['POOR','bad'];const loss=r.loss,lat=r.latency,jit=r.jitter,down=r.download,up=r.upload;if(type==='gaming'){if(loss<=2&&lat<80&&jit<20)return['EXCELLENT','good'];if(loss<=5&&lat<160&&jit<40)return['GOOD','good'];if(loss<=10&&lat<250)return['FAIR','warn'];return['POOR','bad']}if(type==='calls'){if(loss<=2&&lat<150&&jit<30&&up>=5&&down>=5)return['EXCELLENT','good'];if(loss<=5&&lat<250&&up>=2&&down>=3)return['GOOD','good'];if(loss<=10&&up>=1)return['FAIR','warn'];return['POOR','bad']}if(type==='stream'){if(loss<=3&&down>=25)return['EXCELLENT','good'];if(loss<=5&&down>=10)return['GOOD','good'];if(down>=5)return['FAIR','warn'];return['POOR','bad']}if(loss<=5&&down>=10)return['EXCELLENT','good'];if(loss<=10&&down>=3)return['GOOD','good'];return down>=1?['FAIR','warn']:['POOR','bad']}

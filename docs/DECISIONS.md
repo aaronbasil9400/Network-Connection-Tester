@@ -83,9 +83,9 @@ Different endpoints have different routes, server processing times, CORS behavio
 ---
 
 ## ADR-009 — Use Cloudflare transfer endpoints for browser throughput
-**Status:** Accepted/current implementation
+**Status:** Accepted/superseded in method by ADR-019
 
-Download/upload use `speed.cloudflare.com` with adaptive payload sizes.
+Download/upload use `speed.cloudflare.com` with duration-based measurement windows (previously adaptive payload sizes).
 
 Consequence:
 Results depend on the user's route to Cloudflare and browser transfer behavior, so they can differ from Ookla/Fast.com/native tests.
@@ -182,3 +182,24 @@ Reason:
 
 Consequence:
 Any future feature requiring one of these capabilities must justify it, update privacy documentation, and deliberately revise the policy with browser validation.
+
+---
+
+## ADR-019 — Throughput is duration-based steady-state measurement
+**Status:** Accepted
+
+Replace single-shot, size-adaptive transfers with fixed-duration measurement windows:
+
+- Download: streamed read for a 4 s (Quick) / 8 s (Full) window; clock starts at the first received byte; first 500 ms of the window is discarded as TCP slow-start ramp-up.
+- Upload: repeated fixed-size POSTs for the same windows with one discarded warm-up transfer.
+- Both directions: one warm-up transfer per direction, a 600 ms settle pause between phases, and data caps (60 MB Quick / 250 MB Full).
+
+Reason:
+The previous method timed one short transfer including DNS/TCP/TLS setup. Short transfers are dominated by connection establishment and TCP slow start, so results systematically underestimated capacity and varied run-to-run because a single sample carried the whole result. Fixed windows let the transfer reach steady state and average out transient dips, mirroring how the latency probes already discard warm-ups and take a median.
+
+Trade-offs accepted:
+- Tests take longer than the old adaptive transfers.
+- Very fast connections may hit the data cap before the full window elapses; measurement then falls back to the post-first-byte average rather than pretending to a longer window.
+- Upload timing still includes per-request server response overhead inherent to `no-cors` POSTs.
+
+Validation note: 2026-08-22 manual browser cross-check against Fast.com showed near-parity on a real connection, confirming the steady-state method removed the prior systematic underestimate.

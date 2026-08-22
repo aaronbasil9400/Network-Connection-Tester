@@ -144,6 +144,19 @@ This avoids relying solely on `navigator.onLine`.
 
 ## Throughput
 
+Throughput is duration-based, not size-based. Both directions measure a fixed time window against Cloudflare and report a steady-state rate. The profile is defined in `metrics.js` as `SPEED_PROFILE`:
+
+| Constant | Value |
+|---|---:|
+| quickDurationMs | 4000 |
+| fullDurationMs | 8000 |
+| rampDiscardMs | 500 |
+| minWindowMs | 1000 |
+| settleMs | 600 |
+| downloadChunkBytes | 25 MB |
+| uploadChunkBytes | 2 MB |
+| maxQuickBytes / maxFullBytes | 60 MB / 250 MB |
+
 ### Download
 
 Endpoint:
@@ -152,19 +165,17 @@ Endpoint:
 https://speed.cloudflare.com/__down
 ```
 
-First transfer:
-2 MB.
+Sequence per run:
+1. one discarded warm-up request (1 MB) establishes the connection/route,
+2. repeated streamed requests (`res.body.getReader()`, 25 MB chunks) until the window elapses or the data cap is reached,
+3. the measurement clock starts at the **first received byte**, so DNS/TCP/TLS setup is excluded by construction,
+4. the first 500 ms of the window is discarded as TCP slow-start ramp-up.
 
-Quick mode remains 2 MB.
+Mbps (steady state):
 
-Full-mode adaptive transfer:
-- first ≥150 Mbps → 25 MB
-- ≥60 → 10 MB
-- ≥20 → 5 MB
-- otherwise 2 MB
+`(bytesAfterRamp × 8) / secondsAfterRamp / 1e6`
 
-Mbps:
-`receivedBytes × 8 / elapsedSeconds / 1e6`
+If the measured window is shorter than `minWindowMs` (1000 ms), the result falls back to the post-first-byte average over the whole received stream; if no usable data was received, the phase reports `Failed`.
 
 ### Upload
 
@@ -174,18 +185,17 @@ Endpoint:
 https://speed.cloudflare.com/__up
 ```
 
-First transfer:
-1 MB.
+The browser cannot observe upload progress mid-request, so upload measures repeated fixed-size POSTs (2 MB each):
 
-Quick mode remains 1 MB.
+1. one discarded warm-up POST,
+2. sequential POSTs until the window elapses or the cap is reached,
+3. aggregate Mbps = summed POST bytes × 8 / summed elapsed seconds.
 
-Full-mode adaptive transfer:
-- first ≥80 Mbps → 10 MB
-- ≥25 → 5 MB
-- ≥8 → 2 MB
-- otherwise 1 MB
+### Stability controls
 
-The browser measures client-side elapsed time for the transfer request.
+- 600 ms settle pause before the download phase and between download/upload phases.
+- A watchdog abort timer (`window + 20 s`) bounds the whole phase; partial data is still reported when the abort lands after enough bytes were transferred.
+- Data caps keep mobile usage bounded even on very fast connections.
 
 ## Diagnostic orchestration
 
@@ -297,12 +307,12 @@ The storage-key names are legacy implementation identifiers; changing them can r
 ## PWA cache
 
 Current cache:
-`netvitals-v3`
+`netvitals-v4`
 
 Core versioned assets:
-- `site.css?v=3`
-- `metrics.js?v=3`
-- `app.js?v=3`
+- `site.css?v=4`
+- `metrics.js?v=4`
+- `app.js?v=4`
 
 A release that changes these files should update cache/versioning consistently.
 

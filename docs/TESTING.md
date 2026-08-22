@@ -152,17 +152,27 @@ Do not compare this directly with ICMP packet-loss tools as if they are equivale
 
 ## Throughput validation
 
-Test:
-- Quick download/upload
-- Full adaptive transfer
+Unit tests (`metrics.test.js`) cover the pure math:
+- `SPEED_PROFILE` window/ramp/cap values
+- steady-state rate excludes the ramp and reports the sustained window only
+- short-window fallback to the post-first-byte average
+- aggregate upload throughput sums bytes over summed time and ignores invalid entries
+
+Manual/browser tests:
+- Quick download/upload (4 s windows)
+- Full download/upload (8 s windows)
 - slow connection
 - fast connection
 - blocked `speed.cloudflare.com`
-- request timeout/failure
+- request timeout/failure mid-window (partial data should still report when enough bytes arrived)
 
 Verify the UI reports `Unavailable/Failed` cleanly when the external endpoint cannot be used.
 
-Compare against a conventional speed test only as a sanity check; different endpoint geography, connection reuse, payload sizing and methodology can produce different results.
+Results are steady-state estimates; compare against a conventional speed test only as a sanity check. Different endpoint geography, connection reuse, parallelism, and methodology can produce different results.
+
+### Validation record
+
+- 2026-08-22 — developer manual browser cross-check of the duration-based windows against Fast.com: results were near-parity (within normal methodology tolerance). Confirms the connection-setup exclusion and ramp discard removed the previous systematic underestimate. Single-reference sanity check only; not a certification of absolute accuracy.
 
 ## Service-check validation
 
