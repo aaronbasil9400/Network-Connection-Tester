@@ -20,9 +20,10 @@
     rampDiscardMs: 500,
     minWindowMs: 1000,
     settleMs: 600,
+    downloadStreams: 4,
     downloadChunkBytes: 25000000,
     uploadChunkBytes: 2000000,
-    maxQuickBytes: 60000000,
+    maxQuickBytes: 100000000,
     maxFullBytes: 250000000
   });
 

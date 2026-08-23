@@ -103,6 +103,8 @@ Response requirements:
 - HTTP OK
 - body trimmed exactly to `ok`
 
+Sample capture prefers Resource Timing: after a successful probe, `resourceTimingRtt()` reads `responseStart - requestStart` from the matching resource entry (same-origin requests expose full detail). If no finite entry exists, the sample falls back to wall-clock fetch duration and records its timing source (`timing` or `clock`). The resource-timing buffer is raised once at startup so entries survive page activity. See ADR-020.
+
 This deliberately isolates the network-quality probe from configurable third-party service checks.
 
 The displayed value is specific to the route between the visitor's browser and the NetVitals hosting path. It can differ substantially from ICMP ping, a game server, an Ookla server, or an ISP gateway, which use different routes and/or measurement methods.
@@ -153,9 +155,10 @@ Throughput is duration-based, not size-based. Both directions measure a fixed ti
 | rampDiscardMs | 500 |
 | minWindowMs | 1000 |
 | settleMs | 600 |
+| downloadStreams | 4 |
 | downloadChunkBytes | 25 MB |
 | uploadChunkBytes | 2 MB |
-| maxQuickBytes / maxFullBytes | 60 MB / 250 MB |
+| maxQuickBytes / maxFullBytes | 100 MB / 250 MB |
 
 ### Download
 
@@ -167,15 +170,15 @@ https://speed.cloudflare.com/__down
 
 Sequence per run:
 1. one discarded warm-up request (1 MB) establishes the connection/route,
-2. repeated streamed requests (`res.body.getReader()`, 25 MB chunks) until the window elapses or the data cap is reached,
-3. the measurement clock starts at the **first received byte**, so DNS/TCP/TLS setup is excluded by construction,
+2. `SPEED_PROFILE.downloadStreams` (4) parallel stream loops each issue repeated streamed requests (`res.body.getReader()`, 25 MB chunks) until the shared window elapses or the shared data cap is reached,
+3. all streams append into one cumulative byte timeline; the measurement clock starts at the **first received byte on any stream**, so DNS/TCP/TLS setup is excluded by construction,
 4. the first 500 ms of the window is discarded as TCP slow-start ramp-up.
 
 Mbps (steady state):
 
 `(bytesAfterRamp × 8) / secondsAfterRamp / 1e6`
 
-If the measured window is shorter than `minWindowMs` (1000 ms), the result falls back to the post-first-byte average over the whole received stream; if no usable data was received, the phase reports `Failed`.
+The reported value is **aggregate capacity across the parallel streams**, not single-flow throughput. A single sequential transfer systematically underestimates fast or high-latency paths and leaves drain gaps between chunk requests; parallel streams match how mainstream testers behave. If the measured window is shorter than `minWindowMs` (1000 ms), the result falls back to the post-first-byte average over the whole received stream; if no usable data was received, the phase reports `Failed`.
 
 ### Upload
 
@@ -307,12 +310,12 @@ The storage-key names are legacy implementation identifiers; changing them can r
 ## PWA cache
 
 Current cache:
-`netvitals-v4`
+`netvitals-v6`
 
 Core versioned assets:
 - `site.css?v=4`
-- `metrics.js?v=4`
-- `app.js?v=4`
+- `metrics.js?v=5`
+- `app.js?v=6`
 
 A release that changes these files should update cache/versioning consistently.
 

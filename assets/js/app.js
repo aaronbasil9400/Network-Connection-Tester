@@ -54,39 +54,46 @@ function renderSecurityAssessment(){
 }
 function renderServices(results=null){els.serviceList.innerHTML='';state.settings.services.forEach((s,i)=>{const r=results?.[i],item=document.createElement('div');item.className='service-item';const statusClass=r?classForStatus(r.ok?'good':r.timeout?'warn':'bad'):'',text=r?(r.offline?'Offline':r.ok?`${Math.round(r.ms)} ms`:r.timeout?'Timed out':'Failed'):'Waiting';item.innerHTML=`<span class="service-light ${statusClass}"></span><div style="min-width:0"><div class="service-name"></div><div class="service-url"></div></div><div class="service-result">${text}</div>`;item.querySelector('.service-name').textContent=s.name||`Endpoint ${i+1}`;item.querySelector('.service-url').textContent=s.url;els.serviceList.appendChild(item)})}
 async function serviceProbe(url,timeoutMs){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeoutMs),start=performance.now();try{const sep=url.includes('?')?'&':'?';await fetch(`${url}${sep}_status_check=${Date.now()}_${Math.random()}`,{method:'GET',mode:'no-cors',cache:'no-store',signal:c.signal,credentials:'omit',redirect:'follow'});return{ok:true,ms:performance.now()-start}}catch(e){return{ok:false,timeout:e?.name==='AbortError',ms:performance.now()-start,error:e?.message||'Request failed'}}finally{clearTimeout(t)}}
-async function latencyProbe(timeoutMs=PROBE_PROFILE.timeoutMs){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeoutMs),start=performance.now();try{const response=await fetch(`/ping.txt?_=${Date.now()}_${Math.random()}`,{method:'GET',cache:'no-store',signal:c.signal,credentials:'omit'});if(!response.ok)throw new Error(`HTTP ${response.status}`);const body=(await response.text()).trim();if(body!=='ok')throw new Error('Unexpected probe response');return{ok:true,ms:performance.now()-start}}catch(e){return{ok:false,timeout:e?.name==='AbortError',ms:performance.now()-start,error:e?.message||'Request failed'}}finally{clearTimeout(t)}}
+performance.setResourceTimingBufferSize?.(512);
+function resourceTimingRtt(url){if(!performance.getEntriesByName)return NaN;const target=new URL(url,location.href).href;const entries=performance.getEntriesByName(target,'resource');const last=entries[entries.length-1];if(!last)return NaN;const rtt=last.responseStart-last.requestStart;return Number.isFinite(rtt)&&rtt>=0?rtt:NaN}
+async function latencyProbe(timeoutMs=PROBE_PROFILE.timeoutMs){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeoutMs),start=performance.now(),probeUrl=`/ping.txt?_=${Date.now()}_${Math.random()}`;try{const response=await fetch(probeUrl,{method:'GET',cache:'no-store',signal:c.signal,credentials:'omit'});if(!response.ok)throw new Error(`HTTP ${response.status}`);const body=(await response.text()).trim();if(body!=='ok')throw new Error('Unexpected probe response');const timingRtt=resourceTimingRtt(probeUrl);return Number.isFinite(timingRtt)?{ok:true,ms:timingRtt,source:'timing'}:{ok:true,ms:performance.now()-start,source:'clock'}}catch(e){return{ok:false,timeout:e?.name==='AbortError',ms:performance.now()-start,error:e?.message||'Request failed'}}finally{clearTimeout(t)}}
 async function runNetworkQualityProbe(full){updateProgress(7,'Warming up the latency path…');return runProbeSequence({full,probe:()=>latencyProbe(PROBE_PROFILE.timeoutMs),onMeasured:({index,total})=>updateProgress(10+Math.round(((index+1)/total)*20),`Measuring latency and stability · sample ${index+1} of ${total}`)})}
 async function runServiceChecks(){updateProgress(33,'Checking configured services…');const results=await Promise.all(state.settings.services.map(service=>serviceProbe(service.url,state.settings.timeoutMs)));const reachable=results.filter(result=>result.ok).length;return{results,reachable,total:results.length}}
 function latencyStatus(ms){if(!Number.isFinite(ms))return['Unknown','warn'];if(ms<80)return['Excellent','good'];if(ms<180)return['Good','good'];if(ms<350)return['Fair','warn'];return['Poor','bad']} function jitterStatus(ms){if(!Number.isFinite(ms))return['Unknown','warn'];if(ms<10)return['Excellent','good'];if(ms<30)return['Good','good'];if(ms<60)return['Fair','warn'];return['Poor','bad']} function lossStatus(p){if(!Number.isFinite(p))return['Unknown','warn'];if(p===0)return['Excellent','good'];if(p<=5)return['Good','good'];if(p<=15)return['High','warn'];return['Severe','bad']} function speedStatus(m){if(!Number.isFinite(m))return['Unavailable','warn'];if(m>=100)return['Excellent','good'];if(m>=25)return['Fast','good'];if(m>=5)return['Usable','warn'];return['Slow','bad']}
 async function timedDownload(full){
   const durationMs=full?SPEED_PROFILE.fullDurationMs:SPEED_PROFILE.quickDurationMs;
   const maxBytes=full?SPEED_PROFILE.maxFullBytes:SPEED_PROFILE.maxQuickBytes;
+  const streamCount=Math.max(1,SPEED_PROFILE.downloadStreams||1);
   const controller=new AbortController(),abortTimer=setTimeout(()=>controller.abort(),durationMs+20000);
   const chunks=[];let bytes=0,startAtMs=null,failure=null;
+  const record=value=>{if(startAtMs===null)startAtMs=performance.now();bytes+=value.byteLength;chunks.push({atMs:performance.now()-startAtMs,bytes})};
+  const finished=()=>startAtMs!==null&&(performance.now()-startAtMs>=durationMs||bytes>=maxBytes);
   try{
     try{
       const warmup=await fetch(`https://speed.cloudflare.com/__down?bytes=1000000&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
       try{await warmup.body?.cancel()}catch{}
     }catch{}
-    while((startAtMs===null||performance.now()-startAtMs<durationMs)&&bytes<maxBytes&&!failure){
-      let res;
-      try{
-        res=await fetch(`https://speed.cloudflare.com/__down?bytes=${Math.min(SPEED_PROFILE.downloadChunkBytes,maxBytes-bytes)}&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
-      }catch(e){failure=e;break}
-      if(!res.ok||!res.body){failure=new Error(`HTTP ${res.status}`);break}
-      const reader=res.body.getReader();
-      try{
-        for(;;){
-          const{done,value}=await reader.read();
-          if(done)break;
-          if(startAtMs===null)startAtMs=performance.now();
-          bytes+=value.byteLength;
-          chunks.push({atMs:performance.now()-startAtMs,bytes});
-          if(performance.now()-startAtMs>=durationMs||bytes>=maxBytes)break;
-        }
-      }catch(e){if(e?.name!=='AbortError'||!chunks.length)failure=e}
-      finally{try{await reader.cancel()}catch{}}
-    }
+    const runStream=async()=>{
+      while(!failure&&!finished()){
+        let res;
+        try{
+          res=await fetch(`https://speed.cloudflare.com/__down?bytes=${Math.min(SPEED_PROFILE.downloadChunkBytes,maxBytes-bytes)}&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
+        }catch(e){if(!failure)failure=e;return}
+        if(!res.ok||!res.body){failure=failure||new Error(`HTTP ${res.status}`);return}
+        const reader=res.body.getReader();
+        try{
+          for(;;){
+            const{done,value}=await reader.read();
+            if(done)break;
+            record(value);
+            if(finished())break;
+          }
+        }catch(e){if(e?.name!=='AbortError'||!chunks.length)failure=failure||e}
+        finally{try{await reader.cancel()}catch{}}
+      }
+    };
+    await Promise.all(Array.from({length:streamCount},()=>runStream()));
+    if(!failure&&!chunks.length)failure=new Error('Insufficient download data');
   }finally{clearTimeout(abortTimer)}
   const mbps=steadyStateThroughput(chunks);
   if(!Number.isFinite(mbps))throw failure||new Error('Insufficient download data');
@@ -133,7 +140,7 @@ async function runSpeedTests(full){
     els.downloadMetric.textContent=`${download.toFixed(download>=100?0:1)} Mbps`;
     const [dl,dc]=speedStatus(download);
     setPill(els.downloadPill,dl,dc);
-    els.downloadDetail.textContent=`Steady-state rate from ${(downBytes/1e6).toFixed(0)} MB over ${down.durationSec.toFixed(1)} s · first ${SPEED_PROFILE.rampDiscardMs/1000} s ramp discarded.`;
+    els.downloadDetail.textContent=`Aggregate capacity across ${SPEED_PROFILE.downloadStreams} parallel streams · ${(downBytes/1e6).toFixed(0)} MB over ${down.durationSec.toFixed(1)} s · first ${SPEED_PROFILE.rampDiscardMs/1000} s ramp discarded.`;
   }catch(e){
     els.downloadMetric.textContent='Unavailable';
     setPill(els.downloadPill,'Failed','warn');

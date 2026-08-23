@@ -203,3 +203,36 @@ Trade-offs accepted:
 - Upload timing still includes per-request server response overhead inherent to `no-cors` POSTs.
 
 Validation note: 2026-08-22 manual browser cross-check against Fast.com showed near-parity on a real connection, confirming the steady-state method removed the prior systematic underestimate.
+
+---
+
+## ADR-020 — Latency samples prefer Resource Timing RTT
+**Status:** Accepted
+
+Successful `/ping.txt` samples take `responseStart - requestStart` from the matching Resource Timing entry instead of wall-clock duration around `fetch()`. When no finite entry is available, the sample falls back to wall-clock fetch duration and records its source (`timing` or `clock`). The resource-timing buffer is enlarged once at startup (`setResourceTimingBufferSize(512)`).
+
+Reason:
+- Wall-clock timing included response-body reading, promise resolution, and main-thread scheduling on top of network time.
+- Resource Timing isolates request-start → first-response-byte, which is what the "HTTP RTT approximation" claim describes. Endpoint and semantics from ADR-002 are unchanged.
+
+Consequence:
+- Same-origin requests expose full timing detail without extra headers.
+- Values can differ slightly from pre-change results; history comparisons across this boundary may show a small shift in noisy environments.
+- Scoring thresholds and sample counts are unchanged; only sample capture improved.
+
+---
+
+## ADR-021 — Download measures aggregate capacity across parallel streams
+**Status:** Accepted
+
+Download opens `SPEED_PROFILE.downloadStreams` (currently 4) concurrent streamed requests against `speed.cloudflare.com`. All streams append into one cumulative byte timeline that feeds the existing steady-state math, and the data caps are shared across streams. The Quick cap rises from 60 MB to 100 MB so fast lines keep at least a 1 s post-ramp window.
+
+Reason:
+- A single sequential TCP flow underestimates path capacity whenever bandwidth × RTT exceeds the flow's congestion window, and each new chunk request leaves a drain gap inside the measured window.
+- Multi-connection measurement matches how mainstream testers (Fast.com, Ookla) behave, improving cross-tool comparability.
+- On fast lines the old Quick cap truncated the phase before the steady-state window could form, forcing the lower-accuracy fallback average.
+
+Consequence:
+- Reported download is aggregate link capacity across streams, not single-flow throughput; UI/report wording states this.
+- Worst-case Quick data use rises from ~60 MB to ~100 MB; transfers remain user-triggered (ADR-016).
+- Results still depend on the route to Cloudflare's edge and will not exactly match tools measuring different server networks (for example Netflix Open Connect caches). Exact parity with Fast.com is not claimed.

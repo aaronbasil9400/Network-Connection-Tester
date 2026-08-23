@@ -96,7 +96,7 @@ NetVitals does **not** perform ICMP ping, raw packet capture, Wi-Fi security ins
 
 Current measurements are:
 
-- **Latency:** median browser HTTP request timing to same-origin `/ping.txt`.
+- **Latency:** median of successful samples timed against same-origin `/ping.txt`; each sample prefers Resource Timing `responseStart - requestStart` and falls back to wall-clock fetch duration.
 - **Jitter:** mean absolute difference between consecutive successful measured latency samples.
 - **Request loss:** percentage of measured `/ping.txt` requests that fail.
 - **Download/upload:** browser timed streaming transfers against `speed.cloudflare.com`.
@@ -128,11 +128,12 @@ Defined in `metrics.js` as `SPEED_PROFILE`:
 - ramp discard: first 500 ms of each measured download window
 - minimum steady-state window: 1000 ms (shorter windows fall back to the post-first-byte average)
 - settle pause before download and between download/upload: 600 ms
+- download streams: 4 parallel streamed requests sharing one cumulative byte timeline and data cap
 - download chunk: 25 MB per request; upload chunk: 2 MB per POST
-- data caps: 60 MB (Quick), 250 MB (Full) — whichever limit ends the phase first
+- data caps: 100 MB (Quick), 250 MB (Full) — whichever limit ends the phase first
 - one warm-up transfer per direction, discarded from the result
 
-Download measures a fixed-duration streamed window; the clock starts at the first received byte, so connection setup is excluded. Upload aggregates repeated fixed-size POSTs after discarding one warm-up transfer.
+Download measures a fixed-duration window across parallel streams; the clock starts at the first received byte on any stream, so connection setup is excluded. The reported value is aggregate capacity across those streams, not single-flow throughput. Upload aggregates repeated fixed-size POSTs after discarding one warm-up transfer.
 
 Steady-state math (`steadyStateThroughput`, `aggregateThroughput`) lives in `metrics.js` and is unit-tested in `tests/metrics.test.js`.
 
@@ -228,7 +229,7 @@ Preserve unless deliberately redesigning:
 
 ## Cache/version discipline
 
-The app currently uses asset version `v=4` and service-worker cache `netvitals-v4`.
+`site.css` uses asset version `v=4`, `metrics.js` uses `v=5`, `app.js` uses `v=6`, and the service-worker cache is `netvitals-v6`. Bump versions per changed file; do not let a changed file keep an old query string.
 
 When changing cached core CSS/JS:
 

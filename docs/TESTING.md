@@ -42,6 +42,7 @@ Any change to measurement semantics must update tests intentionally.
 - latency remains same-origin `/ping.txt`
 - no-store/cache-busting behavior
 - non-OK/body validation
+- Resource-Timing RTT preference with wall-clock fallback for latency samples
 - report wording remains accurate
 
 ## Static/site validator

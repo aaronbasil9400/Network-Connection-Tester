@@ -51,6 +51,15 @@ test('latency probe is same-origin, cache-busted, no-store, and rejects non-OK H
   assert.match(probe, /if\(body!=='ok'\)throw new Error\('Unexpected probe response'\)/);
 });
 
+test('latency samples prefer Resource Timing RTT with wall-clock fallback', () => {
+  const probe = section('function resourceTimingRtt(', 'async function runNetworkQualityProbe(');
+  assert.match(probe, /getEntriesByName/);
+  assert.match(probe, /responseStart-last\.requestStart/);
+  assert.match(probe, /source:'timing'/);
+  assert.match(probe, /source:'clock'/);
+  assert.match(source, /setResourceTimingBufferSize/);
+});
+
 test('speed tests use fixed-duration steady-state Cloudflare windows with discarded warm-ups', () => {
   const download = section('async function timedDownload(', 'async function timedUpload(');
   const upload = section('async function timedUpload(', 'async function runSpeedTests(');
@@ -59,10 +68,13 @@ test('speed tests use fixed-duration steady-state Cloudflare windows with discar
   assert.match(download, /getReader\(\)/);
   assert.match(download, /steadyStateThroughput\(chunks\)/);
   assert.match(download, /SPEED_PROFILE\.(fullDurationMs|quickDurationMs)/);
+  assert.match(download, /SPEED_PROFILE\.downloadStreams/);
+  assert.match(download, /Promise\.all\(/);
   assert.doesNotMatch(download, /adaptiveDownloadBytes|arrayBuffer\(\)/);
   assert.match(upload, /speed\.cloudflare\.com\/__up/);
   assert.match(upload, /aggregateThroughput\(transfers\)/);
   assert.match(runner, /SPEED_PROFILE\.settleMs/);
+  assert.match(runner, /Aggregate capacity across/);
   assert.match(source, /steadyStateThroughput,aggregateThroughput/);
   assert.doesNotMatch(source, /adaptiveDownloadBytes|adaptiveUploadBytes/);
 });

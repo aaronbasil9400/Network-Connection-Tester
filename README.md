@@ -27,7 +27,7 @@ The core diagnostic runs entirely in the visitor's browser. No application backe
 ## What it measures
 
 ### Latency
-Median successful browser HTTP request timing to same-origin `/ping.txt`.
+Median successful sample timing to same-origin `/ping.txt`. Samples prefer Resource Timing (`responseStart - requestStart`) over wall-clock fetch duration.
 
 This is **not ICMP ping**.
 
@@ -43,6 +43,8 @@ This is **application-layer request loss**, not raw packet loss.
 Fixed-duration streamed transfers using Cloudflare speed-test endpoints.
 
 Each direction runs a 4 s (Quick) or 8 s (Full) measurement window after one discarded warm-up transfer. The download clock starts at the first received byte (connection setup excluded) and the first 500 ms of the window is discarded as TCP ramp-up, so the reported value is a steady-state rate rather than an average that includes connection startup.
+
+Download runs four parallel streams and reports **aggregate link capacity**, which tracks multi-connection testers such as Fast.com much more closely than a single sequential transfer. Results still depend on your route to Cloudflare's edge and can differ from tools measuring other server networks.
 
 ### Security
 Only signals visible to a normal web page, such as HTTPS/secure context, mixed content, endpoint transport, embedding, and Web Crypto availability.
@@ -61,7 +63,8 @@ Measurement profile:
 | Probe timeout | 2000 ms | 2000 ms |
 | Download window | 4 s | 8 s |
 | Upload window | 4 s | 8 s |
-| Throughput data cap | 60 MB | 250 MB |
+| Parallel download streams | 4 | 4 |
+| Throughput data cap | 100 MB | 250 MB |
 
 Warm-ups are discarded from latency, jitter and request-loss calculations. Each throughput direction discards one warm-up transfer, and the download result excludes the first 500 ms ramp-up of the measured window.
 

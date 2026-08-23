@@ -24,7 +24,7 @@ test('probe profile matches the approved mobile-first sampling limits', () => {
   });
 });
 
-test('speed profile fixes the measurement windows, ramp discard, and data caps', () => {
+test('speed profile fixes the measurement windows, stream count, ramp discard, and data caps', () => {
   assert.deepEqual(SPEED_PROFILE, {
     warmupTransfers: 1,
     quickDurationMs: 4000,
@@ -32,9 +32,10 @@ test('speed profile fixes the measurement windows, ramp discard, and data caps',
     rampDiscardMs: 500,
     minWindowMs: 1000,
     settleMs: 600,
+    downloadStreams: 4,
     downloadChunkBytes: 25000000,
     uploadChunkBytes: 2000000,
-    maxQuickBytes: 60000000,
+    maxQuickBytes: 100000000,
     maxFullBytes: 250000000
   });
 });
@@ -227,6 +228,17 @@ test('steady-state throughput handles empty, degenerate, unordered, and flat inp
     { atMs: 500, bytes: 625000 }
   ];
   assert.equal(steadyStateThroughput(shuffled), 80);
+});
+
+test('merged parallel-stream timelines report combined steady-state capacity', () => {
+  // Two streams append to one shared cumulative timeline; per-stream groups
+  // arrive out of chronological order. Stream A carries odd time-ranks,
+  // stream B carries even ranks, so sorted order reconstructs truthfully.
+  const a = [100, 300, 500, 700, 900, 1100, 1300, 1500].map((atMs, i) => ({ atMs, bytes: ((i * 2 + 1) * 1000000) }));
+  const b = [200, 400, 600, 800, 1000, 1200, 1400, 1600].map((atMs, i) => ({ atMs, bytes: ((i * 2 + 2) * 1000000) }));
+  const chunks = [{ atMs: 0, bytes: 0 }, ...a, ...b];
+  // Ramp baseline lands at 500 ms (5 MB); sustained window is 11 MB over 1.1 s => 80 Mbps.
+  assert.ok(Math.abs(steadyStateThroughput(chunks) - 80) < 1e-6);
 });
 
 test('aggregate throughput sums transfer bytes over summed elapsed time and ignores invalid entries', () => {

@@ -82,6 +82,8 @@ Sequential HTTP GET timings to:
 
 `/ping.txt`
 
+Each sample prefers Resource Timing (`responseStart - requestStart`) over wall-clock fetch duration; wall clock is the fallback when no timing entry is available.
+
 The result is the **median of successful measured requests**.
 
 This represents browser HTTP round-trip behavior to the NetVitals hosting edge/origin path. It is not ICMP ping.
