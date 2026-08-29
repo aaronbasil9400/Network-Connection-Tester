@@ -4,11 +4,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   PROBE_PROFILE,
+  SPEED_PROFILE,
   median,
   calculateJitter,
   summarizeProbeResults,
   hasInternetAccess,
-  runProbeSequence
+  runProbeSequence,
+  steadyStateThroughput,
+  medianThroughput,
+  aggregateThroughput
 } = require('../assets/js/metrics.js');
 
 test('probe profile matches the approved mobile-first sampling limits', () => {
@@ -18,6 +22,22 @@ test('probe profile matches the approved mobile-first sampling limits', () => {
     fullSamples: 16,
     spacingMs: 100,
     timeoutMs: 2000
+  });
+});
+
+test('speed profile fixes the measurement windows, stream count, ramp discard, and data caps', () => {
+  assert.deepEqual(SPEED_PROFILE, {
+    warmupTransfers: 1,
+    quickDurationMs: 4000,
+    fullDurationMs: 8000,
+    rampDiscardMs: 500,
+    minWindowMs: 1000,
+    settleMs: 600,
+    downloadStreams: 4,
+    downloadChunkBytes: 50000000,
+    uploadChunkBytes: 33554432,
+    maxQuickBytes: 250000000,
+    maxFullBytes: 250000000
   });
 });
 
@@ -157,4 +177,134 @@ test('a rejected measured probe becomes a failed result and the sequence continu
   assert.equal(summary.successes, PROBE_PROFILE.quickSamples - 1);
   assert.equal(summary.failures, 1);
   assert.equal(summary.loss, 12.5);
+});
+
+test('steady-state throughput ignores the ramp and reports only the sustained window', () => {
+  const chunks = [
+    { atMs: 0, bytes: 0 },
+    { atMs: 100, bytes: 125000 },
+    { atMs: 200, bytes: 250000 },
+    { atMs: 300, bytes: 375000 },
+    { atMs: 400, bytes: 500000 },
+    { atMs: 500, bytes: 625000 },
+    { atMs: 600, bytes: 1625000 },
+    { atMs: 700, bytes: 2625000 },
+    { atMs: 800, bytes: 3625000 },
+    { atMs: 900, bytes: 4625000 },
+    { atMs: 1000, bytes: 5625000 },
+    { atMs: 1100, bytes: 6625000 },
+    { atMs: 1200, bytes: 7625000 },
+    { atMs: 1300, bytes: 8625000 },
+    { atMs: 1400, bytes: 9625000 },
+    { atMs: 1500, bytes: 10625000 }
+  ];
+  const rampRate = 625000 * 8 / 0.5 / 1e6;
+  const steady = steadyStateThroughput(chunks);
+  assert.equal(steady, 80);
+  assert.ok(Math.abs(steady - rampRate) > 20, 'ramp contamination must be excluded');
+});
+
+test('steady-state throughput falls back to the post-first-byte average when the window is too short', () => {
+  const chunks = [
+    { atMs: 0, bytes: 0 },
+    { atMs: 100, bytes: 12500 },
+    { atMs: 200, bytes: 25000 },
+    { atMs: 300, bytes: 37500 },
+    { atMs: 400, bytes: 50000 }
+  ];
+  assert.ok(Math.abs(steadyStateThroughput(chunks) - (50000 * 8 / 0.4 / 1e6)) < 1e-12);
+});
+
+test('steady-state throughput handles empty, degenerate, unordered, and flat inputs', () => {
+  assert.equal(Number.isNaN(steadyStateThroughput([])), true);
+  assert.equal(Number.isNaN(steadyStateThroughput([{ atMs: 10, bytes: 500 }])), true);
+  assert.equal(Number.isNaN(steadyStateThroughput(null)), true);
+  assert.equal(Number.isNaN(steadyStateThroughput([
+    { atMs: 0, bytes: 4000 },
+    { atMs: 2000, bytes: 4000 }
+  ])), true);
+  const shuffled = [
+    { atMs: 1500, bytes: 10625000 },
+    { atMs: 0, bytes: 0 },
+    { atMs: 500, bytes: 625000 }
+  ];
+  assert.equal(steadyStateThroughput(shuffled), 80);
+});
+
+test('merged parallel-stream timelines report combined steady-state capacity', () => {
+  // Two streams append to one shared cumulative timeline; per-stream groups
+  // arrive out of chronological order. Stream A carries odd time-ranks,
+  // stream B carries even ranks, so sorted order reconstructs truthfully.
+  const a = [100, 300, 500, 700, 900, 1100, 1300, 1500].map((atMs, i) => ({ atMs, bytes: ((i * 2 + 1) * 1000000) }));
+  const b = [200, 400, 600, 800, 1000, 1200, 1400, 1600].map((atMs, i) => ({ atMs, bytes: ((i * 2 + 2) * 1000000) }));
+  const chunks = [{ atMs: 0, bytes: 0 }, ...a, ...b];
+  // Ramp baseline lands at 500 ms (5 MB); sustained window is 11 MB over 1.1 s => 80 Mbps.
+  assert.ok(Math.abs(steadyStateThroughput(chunks) - 80) < 1e-6);
+});
+
+test('median throughput buckets per-second rates and returns their median', () => {
+  // Constant 100 Mbps sustained: each post-ramp second adds 12.5 MB.
+  const chunks = [];
+  for (let ms = 0; ms <= 4000; ms += 100) {
+    const bytes = ms < 500 ? (ms / 500) * 6250000 : 6250000 + (ms - 500) * 12500;
+    chunks.push({ atMs: ms, bytes });
+  }
+  assert.ok(Math.abs(medianThroughput(chunks) - 100) < 1e-6);
+});
+
+test('median throughput ignores an isolated slow second via the median', () => {
+  // Two normal seconds (~100 Mbps) and one slow second (~50 Mbps): median stays ~100.
+  // Build a 3-second post-ramp timeline: s1 100 Mbps, s2 50 Mbps, s3 100 Mbps.
+  const rampMs = 500;
+  const chunks = [{ atMs: 0, bytes: 0 }, { atMs: rampMs, bytes: 6250000 }];
+  const perSec = [12.5e6, 6.25e6, 12.5e6];
+  let bytes = 6250000;
+  let t = rampMs;
+  for (const add of perSec) {
+    t += 1000;
+    bytes += add;
+    chunks.push({ atMs: t, bytes });
+  }
+  const result = medianThroughput(chunks);
+  assert.ok(Math.abs(result - 100) < 1e-6, `expected ~100 Mbps, got ${result}`);
+});
+
+test('median throughput falls back to post-first-byte average on short windows', () => {
+  const chunks = [
+    { atMs: 0, bytes: 0 },
+    { atMs: 100, bytes: 12500 },
+    { atMs: 200, bytes: 25000 },
+    { atMs: 300, bytes: 37500 },
+    { atMs: 400, bytes: 50000 }
+  ];
+  assert.ok(Math.abs(medianThroughput(chunks) - (50000 * 8 / 0.4 / 1e6)) < 1e-12);
+});
+
+test('median throughput respects an overridden ramp discard window', () => {
+  // With rampDiscardMs=1500, the first 1.5 s is baseline; only the tail counts.
+  const chunks = [];
+  for (let ms = 0; ms <= 3000; ms += 250) {
+    const bytes = ms * 12500;
+    chunks.push({ atMs: ms, bytes });
+  }
+  const withRamp = medianThroughput(chunks, { rampDiscardMs: 1500 });
+  assert.ok(Math.abs(withRamp - 100) < 1e-6);
+  assert.ok(Number.isNaN(medianThroughput([])));
+  assert.ok(Number.isNaN(medianThroughput(null)));
+});
+
+test('aggregate throughput sums transfer bytes over summed elapsed time and ignores invalid entries', () => {
+  assert.ok(Math.abs(aggregateThroughput([
+    { sec: 1, bytes: 1000000 },
+    { sec: 1, bytes: 2000000 }
+  ]) - 12) < 1e-12);
+  assert.ok(Math.abs(aggregateThroughput([
+    null,
+    { sec: Number.NaN, bytes: 999999 },
+    { sec: 2, bytes: 0 },
+    { sec: -1, bytes: 500000 },
+    { sec: 0.5, bytes: 500000 }
+  ]) - 8) < 1e-12);
+  assert.equal(Number.isNaN(aggregateThroughput([])), true);
+  assert.equal(Number.isNaN(aggregateThroughput(null)), true);
 });

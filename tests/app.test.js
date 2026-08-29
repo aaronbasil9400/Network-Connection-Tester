@@ -51,6 +51,45 @@ test('latency probe is same-origin, cache-busted, no-store, and rejects non-OK H
   assert.match(probe, /if\(body!=='ok'\)throw new Error\('Unexpected probe response'\)/);
 });
 
+test('latency samples prefer Resource Timing RTT with wall-clock fallback', () => {
+  const probe = section('function resourceTimingRtt(', 'async function runNetworkQualityProbe(');
+  assert.match(probe, /getEntriesByName/);
+  assert.match(probe, /responseStart-last\.requestStart/);
+  assert.match(probe, /source:'timing'/);
+  assert.match(probe, /source:'clock'/);
+  assert.match(source, /setResourceTimingBufferSize/);
+});
+
+test('speed tests use fixed-duration steady-state Cloudflare windows with discarded warm-ups', () => {
+  const download = section('async function timedDownload(', 'async function timedUpload(');
+  const upload = section('async function timedUpload(', 'async function runCloudflareSpeedTests(');
+  const cloudflare = section('async function runCloudflareSpeedTests(', 'function renderFastSpeed(');
+  const runner = section('async function runSpeedTests(', 'function qualityScore(');
+  assert.match(download, /speed\.cloudflare\.com\/__down/);
+  assert.match(download, /getReader\(\)/);
+  assert.match(download, /medianThroughput\(chunks,\{rampDiscardMs:rampMs\}\)/);
+  assert.match(download, /SPEED_PROFILE\.(fullDurationMs|quickDurationMs)/);
+  assert.match(download, /SPEED_PROFILE\.downloadStreams/);
+  assert.match(download, /Promise\.all\(/);
+  assert.doesNotMatch(download, /adaptiveDownloadBytes|arrayBuffer\(\)/);
+  assert.match(upload, /speed\.cloudflare\.com\/__up/);
+  assert.match(upload, /XMLHttpRequest\(\)/);
+  assert.match(upload, /upload\.onprogress/);
+  assert.match(upload, /medianThroughput\(chunks,\{rampDiscardMs:rampMs\}\)/);
+  assert.match(upload, /aggregateThroughput\(transfers\)/);
+  assert.match(cloudflare, /SPEED_PROFILE\.settleMs/);
+  assert.match(cloudflare, /median sustained rate across/);
+  assert.match(runner, /fast\?\.runFastTest/);
+  assert.match(runner, /fast\.isCredible/);
+  assert.match(runner, /runCloudflareSpeedTests/);
+  assert.match(runner, /FAST\/Netflix primary/);
+  assert.match(runner, /Cloudflare fallback/);
+  assert.match(source, /sameSpeedProvider/);
+  assert.match(source, /rampMs=Number\.isFinite\(latency\)\?clamp\(latency\*2/);
+  assert.match(source, /medianThroughput,aggregateThroughput/);
+  assert.doesNotMatch(source, /adaptiveDownloadBytes|adaptiveUploadBytes/);
+});
+
 test('generated report uses the revised measurement and security wording', () => {
   const reportSource = section('function buildReport()', 'async function shareReport(');
   const text = value => ({ textContent: value });
@@ -70,7 +109,7 @@ test('generated report uses the revised measurement and security wording', () =>
     browseVerdict: text('EXCELLENT')
   };
   const state = {
-    lastResult: { score: 90 },
+    lastResult: { score: 90, speedProvider: 'FAST/Netflix primary' },
     securityResult: { score: 100, label: 'Low visible risk' },
     settings: { services: [{ name: 'Example', url: 'https://example.com/' }] },
     results: [{ ok: true, ms: 25 }]
@@ -79,6 +118,7 @@ test('generated report uses the revised measurement and security wording', () =>
   const build = new Function('els', 'state', 'navigator', 'nowLabel', `${reportSource}; return buildReport();`);
   const report = build(els, state, navigator, () => 'now');
   assert.match(report, /Browsing: EXCELLENT/);
+  assert.match(report, /Speed provider: FAST\/Netflix primary/);
   assert.match(report, /Latency is a median browser HTTP RTT approximation\./);
   assert.match(report, /Request loss is an application-layer approximation\./);
   assert.match(report, /Security scoring covers browser-visible signals only\./);

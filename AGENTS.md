@@ -40,7 +40,8 @@ Owns:
 - browser-visible security assessment
 - configured service checks
 - same-origin latency probe
-- Cloudflare throughput tests
+- automatic FAST/Netflix throughput selection
+- Cloudflare throughput fallback
 - quality scoring
 - use-case verdicts
 - history/charts
@@ -58,6 +59,20 @@ Owns the isolated/testable measurement math:
 - measured-request loss summary
 - connectivity evidence
 - sequential probe runner
+
+### FAST throughput adapter
+`assets/js/fast.js`
+
+Owns the direct, browser-visible FAST/Netflix Open Connect integration:
+- discovery and HTTPS OCA target validation
+- adaptive 1–8 worker transfers
+- moving-average progress and stability checks
+- target failure handling
+- cumulative 1 GB FAST-attempt data cap
+
+The discovery endpoint is an undocumented third-party dependency. If it is
+unavailable, unstable, or blocked by CORS, `app.js` must use Cloudflare without
+requiring a user provider selection.
 
 ### Styling
 `assets/css/site.css`
@@ -87,6 +102,7 @@ This file must contain exactly `ok` and must remain uncached.
 
 ### Tests
 - `tests/metrics.test.js`
+- `tests/fast.test.js`
 - `tests/app.test.js`
 - `tests/validate_site.py`
 
@@ -96,10 +112,10 @@ NetVitals does **not** perform ICMP ping, raw packet capture, Wi-Fi security ins
 
 Current measurements are:
 
-- **Latency:** median browser HTTP request timing to same-origin `/ping.txt`.
+- **Latency:** median of successful samples timed against same-origin `/ping.txt`; each sample prefers Resource Timing `responseStart - requestStart` and falls back to wall-clock fetch duration.
 - **Jitter:** mean absolute difference between consecutive successful measured latency samples.
 - **Request loss:** percentage of measured `/ping.txt` requests that fail.
-- **Download/upload:** browser transfers against `speed.cloudflare.com`.
+- **Download/upload:** FAST/Netflix Open Connect browser transfers when discovery, CORS, target health, progress, and stability checks succeed; otherwise Cloudflare browser transfers are used automatically as a fallback. The selected provider is recorded and reported.
 - **Service checks:** browser `no-cors` fetch reachability checks to configured HTTPS endpoints.
 - **Security score:** only browser-visible page/context signals.
 
@@ -118,6 +134,43 @@ Defined in `metrics.js`:
 Warm-up probes are discarded from latency, jitter, and request-loss calculations.
 
 Measured probes run sequentially.
+
+### Speed profile
+
+The Cloudflare fallback profile is defined in `metrics.js` as `SPEED_PROFILE`:
+
+- Quick throughput window: 4000 ms
+- Full throughput window: 8000 ms
+- ramp discard: adaptive, `clamp(2 × measured median latency, 500, 2000)` ms, passed into both directions as `rampDiscardMs`
+- minimum steady-state window: 1000 ms (shorter windows fall back to the post-first-byte average)
+- settle pause before download and between download/upload: 600 ms
+- download streams: 4 parallel streamed requests sharing one cumulative byte timeline and data cap
+- download chunk: 50 MB per request; upload chunk: 32 MB per XHR POST
+- data caps: 250 MB (Quick) and 250 MB (Full) — whichever limit ends the phase first
+- one warm-up transfer per direction, discarded from the result
+
+Download measures a fixed-duration window across parallel streams; the clock starts at the first received byte on any stream, so connection setup is excluded. The reported value is the median of per-second sustained rates across those streams, not single-flow throughput. Upload streams via `XMLHttpRequest` `upload.onprogress` into the same cumulative byte timeline, aborts the in-flight body when the window or cap elapses, and reports the median of per-second sustained rates; it falls back to `aggregateThroughput` when progress events never fire.
+
+Steady-state math (`steadyStateThroughput`, `medianThroughput`, `aggregateThroughput`) lives in `metrics.js` and is unit-tested in `tests/metrics.test.js`.
+
+### FAST/Netflix primary profile
+
+Defined in `fast.js`:
+
+- discovery: `api.fast.com/netflix/speedtest/v2`, five target URLs
+- connections: start at 1 and grow to at most 8 from aggregate-speed thresholds
+- progress snapshots: 150 ms
+- moving average: latest 5 snapshots
+- stability: six recent measurements within 2%, after at least 7 seconds
+- maximum duration: 12 seconds Quick, 30 seconds Full
+- request size: 25 MB range requests with an inclusive-byte correction
+- cumulative FAST attempt cap: 1 GB across download and upload
+- requests use only validated HTTPS `*.nflxvideo.net` targets
+
+FAST results are accepted only when both directions produce finite, stable
+progress-based estimates. A failed or sketchy attempt is discarded and the
+Cloudflare fallback runs automatically. FAST and Cloudflare values remain
+provider-labelled so history deltas do not compare different routes.
 
 ## Quality score
 
@@ -203,7 +256,10 @@ Preserve unless deliberately redesigning:
 - `ping.txt` must have no-store cache headers.
 - Service-check timings must not feed latency/jitter/loss.
 - Metrics module loads before `app.js`.
+- `fast.js` loads after `metrics.js` and before `app.js`.
 - Browser restrictions must degrade to `Unavailable` rather than fake data.
+- Do not present a CLI or server-side FAST measurement as the visitor's browser
+  throughput; using one requires an explicit architecture decision.
 - Speed tests remain user-triggered.
 - History/settings remain local to the browser.
 - HTTPS is the production assumption.
@@ -211,7 +267,7 @@ Preserve unless deliberately redesigning:
 
 ## Cache/version discipline
 
-The app currently uses asset version `v=3` and service-worker cache `netvitals-v3`.
+`site.css` uses asset version `v=4`, `metrics.js` uses `v=6`, `fast.js` uses `v=1`, `app.js` uses `v=8`, and the service-worker cache is `netvitals-v8`. Bump versions per changed file; do not let a changed file keep an old query string.
 
 When changing cached core CSS/JS:
 
@@ -231,7 +287,7 @@ Before editing:
 - check tests protecting that behavior.
 
 After editing:
-- run `node --test tests/app.test.js tests/metrics.test.js`,
+- run `node --test tests/app.test.js tests/metrics.test.js tests/fast.test.js`,
 - run `python3 tests/validate_site.py`,
 - perform browser/manual tests when behavior is browser-dependent,
 - state what was actually tested,
@@ -278,6 +334,7 @@ Require regression tests:
 - quality score
 - use-case classifications
 - Cloudflare transfer sizing/timing
+- FAST discovery, target validation, worker scaling, cap, and stability
 - security score
 - service worker fetch policy
 - localStorage schema keys

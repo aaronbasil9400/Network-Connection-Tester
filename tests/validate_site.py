@@ -35,6 +35,7 @@ ADSENSE_CLIENT = 'ca-pub-4936629245103906'
 errors=[]
 homepage=(ROOT/'index.html').read_text(encoding='utf-8')
 for p in ROOT.rglob('*.html'):
+    if 'graphify-out' in p.parts: continue
     source=p.read_text(encoding='utf-8')
     parser=SiteHTMLParser()
     parser.feed(source)
@@ -58,11 +59,14 @@ for icon in ['favicon.svg','favicon.ico','apple-touch-icon.png','icon-192.png','
 expected_ads_txt=f'google.com, pub-{ADSENSE_CLIENT.removeprefix("ca-pub-")}, DIRECT, f08c47fec0942fa0'
 if (ROOT/'ads.txt').read_text(encoding='utf-8').strip() != expected_ads_txt: errors.append('ads.txt does not contain exactly one matching AdSense publisher entry')
 
-metrics_script='<script src="/assets/js/metrics.js?v=3"></script>'
-app_script='<script src="/assets/js/app.js?v=3"></script>'
+metrics_script='<script src="/assets/js/metrics.js?v=6"></script>'
+fast_script='<script src="/assets/js/fast.js?v=1"></script>'
+app_script='<script src="/assets/js/app.js?v=8"></script>'
 if homepage.count(metrics_script) != 1: errors.append('homepage must load metrics.js exactly once')
+if homepage.count(fast_script) != 1: errors.append('homepage must load fast.js exactly once')
 if homepage.count(app_script) != 1: errors.append('homepage must load app.js exactly once')
 if homepage.find(metrics_script) > homepage.find(app_script): errors.append('metrics.js must load before app.js')
+if homepage.find(metrics_script) > homepage.find(fast_script) or homepage.find(fast_script) > homepage.find(app_script): errors.append('metrics.js and fast.js must load before app.js')
 if 'id="jitterDetail"' not in homepage: errors.append('homepage is missing the dynamic jitter detail element')
 
 ping=(ROOT/'ping.txt')
@@ -73,7 +77,8 @@ if not ping_headers or 'Cache-Control: no-store' not in ping_headers.group(1): e
 
 worker=(ROOT/'service-worker.js').read_text(encoding='utf-8')
 assets_match=re.search(r'const ASSETS=\[(.*?)\];',worker,re.S)
-if not assets_match or '/assets/js/metrics.js' not in assets_match.group(1): errors.append('service worker must precache metrics.js')
+for asset in ['/assets/css/site.css?v=4','/assets/js/metrics.js?v=6','/assets/js/fast.js?v=1','/assets/js/app.js?v=8']:
+    if not assets_match or asset not in assets_match.group(1): errors.append(f'service worker must precache {asset}')
 if assets_match and '/ping.txt' in assets_match.group(1): errors.append('service worker must not precache ping.txt')
 ping_bypass="url.pathname==='/ping.txt'"
 if ping_bypass not in worker or worker.find(ping_bypass) > worker.find('respondWith'): errors.append('service worker must bypass /ping.txt before respondWith')
@@ -92,7 +97,7 @@ for js in list((ROOT/'assets/js').glob('*.js'))+[ROOT/'service-worker.js']:
     if cp.returncode: errors.append(f'{js.relative_to(ROOT)} JS syntax: {cp.stderr.strip()}')
 test_files=[str(p) for p in sorted((ROOT/'tests').glob('*.test.js'))]
 unit=subprocess.run(['node','--test',*test_files],capture_output=True,text=True)
-if unit.returncode: errors.append(f'metrics unit tests failed:\n{unit.stdout}\n{unit.stderr}'.strip())
+if unit.returncode: errors.append(f'Node unit tests failed:\n{unit.stdout}\n{unit.stderr}'.strip())
 if errors:
     print('\n'.join(errors)); sys.exit(1)
-print('PASS: site structure, branding, AdSense, probe endpoint/cache rules, JavaScript syntax and metrics unit tests.')
+print('PASS: site structure, branding, AdSense, probe endpoint/cache rules, JavaScript syntax and Node unit tests.')

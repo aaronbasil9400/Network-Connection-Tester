@@ -1,12 +1,13 @@
 'use strict';
 const metrics=window.NetVitalsMetrics;
 if(!metrics)throw new Error('NetVitals metrics module failed to load.');
-const {PROBE_PROFILE,hasInternetAccess,runProbeSequence}=metrics;
+const fast=window.NetVitalsFast;
+const {PROBE_PROFILE,SPEED_PROFILE,hasInternetAccess,runProbeSequence,medianThroughput,aggregateThroughput}=metrics;
 const STORAGE_KEY='phone-status-app-v3', HISTORY_KEY='phone-status-history-v4';
 const defaults={timeoutMs:6000,intervalSec:0,services:[{name:'Cloudflare',url:'https://www.cloudflare.com/'},{name:'Google',url:'https://www.google.com/'},{name:'Microsoft',url:'https://www.microsoft.com/'}]};
 const state={settings:loadJson(STORAGE_KEY,defaults),history:loadJson(HISTORY_KEY,[]),timer:null,checking:false,results:[],lastResult:null,securityResult:null};
 const $=id=>document.getElementById(id);
-const ids=['hero','overallDot','overallStatus','qualityScore','qualityLabel','lastCheck','testDuration','runProgress','progressText','fullBtn','quickBtn','shareBtn','settingsBtn','internetPill','internetMetric','internetDetail','latencyPill','latencyMetric','latencyDetail','latencyDelta','jitterPill','jitterMetric','jitterDetail','lossPill','lossMetric','lossDetail','downloadPill','downloadMetric','downloadDetail','downloadDelta','uploadPill','uploadMetric','uploadDetail','uploadDelta','networkPill','networkMetric','networkDetail','batteryPill','batteryMetric','batteryBar','batteryDetail','verdictPill','verdictSummary','gamingVerdict','callsVerdict','streamVerdict','browseVerdict','deviceMetric','deviceGrid','securityPill','securityScore','securitySummary','securityBar','securityList','serviceList','serviceSummary','latencyChart','downloadChart','uploadChart','latencyLatest','downloadLatest','uploadLatest','settingsPanel','closeSettingsBtn','timeoutInput','intervalInput','serviceEditors','addServiceBtn','resetBtn','saveBtn'];
+const ids=['hero','overallDot','overallStatus','qualityScore','qualityLabel','lastCheck','testDuration','runProgress','progressText','fullBtn','quickBtn','shareBtn','settingsBtn','speedProvider','internetPill','internetMetric','internetDetail','latencyPill','latencyMetric','latencyDetail','latencyDelta','jitterPill','jitterMetric','jitterDetail','lossPill','lossMetric','lossDetail','downloadPill','downloadMetric','downloadDetail','downloadDelta','uploadPill','uploadMetric','uploadDetail','uploadDelta','networkPill','networkMetric','networkDetail','batteryPill','batteryMetric','batteryBar','batteryDetail','verdictPill','verdictSummary','gamingVerdict','callsVerdict','streamVerdict','browseVerdict','deviceMetric','deviceGrid','securityPill','securityScore','securitySummary','securityBar','securityList','serviceList','serviceSummary','latencyChart','downloadChart','uploadChart','latencyLatest','downloadLatest','uploadLatest','settingsPanel','closeSettingsBtn','timeoutInput','intervalInput','serviceEditors','addServiceBtn','resetBtn','saveBtn'];
 const els=Object.fromEntries(ids.map(id=>[id,$(id)]));
 function clone(v){return JSON.parse(JSON.stringify(v))} function loadJson(k,f){try{return JSON.parse(localStorage.getItem(k))??clone(f)}catch{return clone(f)}} function saveJson(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 function classForStatus(s){return s==='good'?'good':s==='bad'?'bad':s==='warn'?'warn':''} function setPill(el,text,status=''){el.textContent=text;el.className=`pill ${classForStatus(status)}`.trim()} function nowLabel(){return new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'medium'}).format(new Date())}
@@ -54,14 +55,188 @@ function renderSecurityAssessment(){
 }
 function renderServices(results=null){els.serviceList.innerHTML='';state.settings.services.forEach((s,i)=>{const r=results?.[i],item=document.createElement('div');item.className='service-item';const statusClass=r?classForStatus(r.ok?'good':r.timeout?'warn':'bad'):'',text=r?(r.offline?'Offline':r.ok?`${Math.round(r.ms)} ms`:r.timeout?'Timed out':'Failed'):'Waiting';item.innerHTML=`<span class="service-light ${statusClass}"></span><div style="min-width:0"><div class="service-name"></div><div class="service-url"></div></div><div class="service-result">${text}</div>`;item.querySelector('.service-name').textContent=s.name||`Endpoint ${i+1}`;item.querySelector('.service-url').textContent=s.url;els.serviceList.appendChild(item)})}
 async function serviceProbe(url,timeoutMs){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeoutMs),start=performance.now();try{const sep=url.includes('?')?'&':'?';await fetch(`${url}${sep}_status_check=${Date.now()}_${Math.random()}`,{method:'GET',mode:'no-cors',cache:'no-store',signal:c.signal,credentials:'omit',redirect:'follow'});return{ok:true,ms:performance.now()-start}}catch(e){return{ok:false,timeout:e?.name==='AbortError',ms:performance.now()-start,error:e?.message||'Request failed'}}finally{clearTimeout(t)}}
-async function latencyProbe(timeoutMs=PROBE_PROFILE.timeoutMs){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeoutMs),start=performance.now();try{const response=await fetch(`/ping.txt?_=${Date.now()}_${Math.random()}`,{method:'GET',cache:'no-store',signal:c.signal,credentials:'omit'});if(!response.ok)throw new Error(`HTTP ${response.status}`);const body=(await response.text()).trim();if(body!=='ok')throw new Error('Unexpected probe response');return{ok:true,ms:performance.now()-start}}catch(e){return{ok:false,timeout:e?.name==='AbortError',ms:performance.now()-start,error:e?.message||'Request failed'}}finally{clearTimeout(t)}}
+performance.setResourceTimingBufferSize?.(512);
+function resourceTimingRtt(url){if(!performance.getEntriesByName)return NaN;const target=new URL(url,location.href).href;const entries=performance.getEntriesByName(target,'resource');const last=entries[entries.length-1];if(!last)return NaN;const rtt=last.responseStart-last.requestStart;return Number.isFinite(rtt)&&rtt>=0?rtt:NaN}
+async function latencyProbe(timeoutMs=PROBE_PROFILE.timeoutMs){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeoutMs),start=performance.now(),probeUrl=`/ping.txt?_=${Date.now()}_${Math.random()}`;try{const response=await fetch(probeUrl,{method:'GET',cache:'no-store',signal:c.signal,credentials:'omit'});if(!response.ok)throw new Error(`HTTP ${response.status}`);const body=(await response.text()).trim();if(body!=='ok')throw new Error('Unexpected probe response');const timingRtt=resourceTimingRtt(probeUrl);return Number.isFinite(timingRtt)?{ok:true,ms:timingRtt,source:'timing'}:{ok:true,ms:performance.now()-start,source:'clock'}}catch(e){return{ok:false,timeout:e?.name==='AbortError',ms:performance.now()-start,error:e?.message||'Request failed'}}finally{clearTimeout(t)}}
 async function runNetworkQualityProbe(full){updateProgress(7,'Warming up the latency path…');return runProbeSequence({full,probe:()=>latencyProbe(PROBE_PROFILE.timeoutMs),onMeasured:({index,total})=>updateProgress(10+Math.round(((index+1)/total)*20),`Measuring latency and stability · sample ${index+1} of ${total}`)})}
 async function runServiceChecks(){updateProgress(33,'Checking configured services…');const results=await Promise.all(state.settings.services.map(service=>serviceProbe(service.url,state.settings.timeoutMs)));const reachable=results.filter(result=>result.ok).length;return{results,reachable,total:results.length}}
 function latencyStatus(ms){if(!Number.isFinite(ms))return['Unknown','warn'];if(ms<80)return['Excellent','good'];if(ms<180)return['Good','good'];if(ms<350)return['Fair','warn'];return['Poor','bad']} function jitterStatus(ms){if(!Number.isFinite(ms))return['Unknown','warn'];if(ms<10)return['Excellent','good'];if(ms<30)return['Good','good'];if(ms<60)return['Fair','warn'];return['Poor','bad']} function lossStatus(p){if(!Number.isFinite(p))return['Unknown','warn'];if(p===0)return['Excellent','good'];if(p<=5)return['Good','good'];if(p<=15)return['High','warn'];return['Severe','bad']} function speedStatus(m){if(!Number.isFinite(m))return['Unavailable','warn'];if(m>=100)return['Excellent','good'];if(m>=25)return['Fast','good'];if(m>=5)return['Usable','warn'];return['Slow','bad']}
-async function downloadTransfer(bytes){const c=new AbortController(),t=setTimeout(()=>c.abort(),20000),start=performance.now();try{const res=await fetch(`https://speed.cloudflare.com/__down?bytes=${bytes}&_=${Date.now()}`,{cache:'no-store',signal:c.signal,credentials:'omit'});if(!res.ok)throw new Error(`HTTP ${res.status}`);const data=await res.arrayBuffer(),sec=(performance.now()-start)/1000;return(data.byteLength*8)/sec/1e6}finally{clearTimeout(t)}}
-async function uploadTransfer(bytes){const payload=new Blob(['0'.repeat(bytes)],{type:'text/plain'}),c=new AbortController(),t=setTimeout(()=>c.abort(),20000),start=performance.now();try{await fetch(`https://speed.cloudflare.com/__up?_=${Date.now()}`,{method:'POST',body:payload,mode:'no-cors',cache:'no-store',signal:c.signal,credentials:'omit'});return(bytes*8)/((performance.now()-start)/1000)/1e6}finally{clearTimeout(t)}}
-function adaptiveDownloadBytes(first,full){if(!full)return 2_000_000;if(first>=150)return 25_000_000;if(first>=60)return 10_000_000;if(first>=20)return 5_000_000;return 2_000_000} function adaptiveUploadBytes(first,full){if(!full)return 1_000_000;if(first>=80)return 10_000_000;if(first>=25)return 5_000_000;if(first>=8)return 2_000_000;return 1_000_000}
-async function runSpeedTests(full){els.downloadMetric.textContent='Testing…';els.uploadMetric.textContent='Waiting…';setPill(els.downloadPill,'Testing','warn');setPill(els.uploadPill,'Waiting','');let download=NaN,upload=NaN,downBytes=2_000_000,upBytes=1_000_000;try{updateProgress(38,'Testing download speed…');const first=await downloadTransfer(2_000_000);downBytes=adaptiveDownloadBytes(first,full);download=downBytes===2_000_000?first:await downloadTransfer(downBytes);els.downloadMetric.textContent=`${download.toFixed(download>=100?0:1)} Mbps`;const [l,c]=speedStatus(download);setPill(els.downloadPill,l,c);els.downloadDetail.textContent=`Measured using ${(downBytes/1e6).toFixed(0)} MB Cloudflare download.`}catch(e){els.downloadMetric.textContent='Unavailable';setPill(els.downloadPill,'Failed','warn');els.downloadDetail.textContent=`Download test failed${e?.name==='AbortError'?' (timed out)':''}.`}try{updateProgress(64,'Testing upload speed…');els.uploadMetric.textContent='Testing…';setPill(els.uploadPill,'Testing','warn');const first=await uploadTransfer(1_000_000);upBytes=adaptiveUploadBytes(first,full);upload=upBytes===1_000_000?first:await uploadTransfer(upBytes);els.uploadMetric.textContent=`${upload.toFixed(upload>=100?0:1)} Mbps`;const [l,c]=speedStatus(upload);setPill(els.uploadPill,l,c);els.uploadDetail.textContent=`Measured using ${(upBytes/1e6).toFixed(0)} MB Cloudflare upload.`}catch(e){els.uploadMetric.textContent='Unavailable';setPill(els.uploadPill,'Failed','warn');els.uploadDetail.textContent=`Upload test failed${e?.name==='AbortError'?' (timed out)':''}.`}return{download,upload,downBytes,upBytes}}
+async function timedDownload(full,rampMs,maxBytesOverride){
+  const durationMs=full?SPEED_PROFILE.fullDurationMs:SPEED_PROFILE.quickDurationMs;
+  const maxBytes=Number.isFinite(maxBytesOverride)?Math.max(1,maxBytesOverride):full?SPEED_PROFILE.maxFullBytes:SPEED_PROFILE.maxQuickBytes;
+  const streamCount=Math.max(1,SPEED_PROFILE.downloadStreams||1);
+  const controller=new AbortController(),abortTimer=setTimeout(()=>controller.abort(),durationMs+20000);
+  const chunks=[];let bytes=0,inFlightBytes=0,startAtMs=null,failure=null;
+  const record=value=>{const accepted=Math.min(value.byteLength,Math.max(0,maxBytes-bytes));if(accepted<=0)return;if(startAtMs===null)startAtMs=performance.now();bytes+=accepted;chunks.push({atMs:performance.now()-startAtMs,bytes})};
+  const finished=()=>startAtMs!==null&&(performance.now()-startAtMs>=durationMs||bytes>=maxBytes);
+  try{
+    try{
+      const warmup=await fetch(`https://speed.cloudflare.com/__down?bytes=1000000&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
+      try{await warmup.body?.cancel()}catch{}
+    }catch{}
+    const runStream=async()=>{
+      while(!failure&&!finished()){
+        const available=maxBytes-bytes-inFlightBytes;
+        if(available<=0)return;
+        const requestBytes=Math.min(SPEED_PROFILE.downloadChunkBytes,available);
+        inFlightBytes+=requestBytes;
+        let res;
+        try{
+          try{
+            res=await fetch(`https://speed.cloudflare.com/__down?bytes=${requestBytes}&_=${Date.now()}_${Math.random()}`,{cache:'no-store',signal:controller.signal,credentials:'omit'});
+          }catch(e){if(!failure)failure=e;return}
+          if(!res.ok||!res.body){failure=failure||new Error(`HTTP ${res.status}`);return}
+          const reader=res.body.getReader();
+          try{
+            for(;;){
+              const{done,value}=await reader.read();
+              if(done)break;
+              record(value);
+              if(finished())break;
+            }
+          }catch(e){if(e?.name!=='AbortError'||!chunks.length)failure=failure||e}
+          finally{try{await reader.cancel()}catch{}}
+        }finally{
+          inFlightBytes-=requestBytes;
+        }
+      }
+    };
+    await Promise.all(Array.from({length:streamCount},()=>runStream()));
+    if(!failure&&!chunks.length)failure=new Error('Insufficient download data');
+  }finally{clearTimeout(abortTimer)}
+  const mbps=medianThroughput(chunks,{rampDiscardMs:rampMs});
+  if(!Number.isFinite(mbps))throw failure||new Error('Insufficient download data');
+  return{mbps,bytes,durationSec:startAtMs===null?0:(chunks[chunks.length-1]?.atMs||0)/1000};
+}
+async function timedUpload(full,rampMs,maxBytesOverride){
+  const durationMs=full?SPEED_PROFILE.fullDurationMs:SPEED_PROFILE.quickDurationMs;
+  const maxBytes=Number.isFinite(maxBytesOverride)?Math.max(1,maxBytesOverride):full?SPEED_PROFILE.maxFullBytes:SPEED_PROFILE.maxQuickBytes;
+  const controller=new AbortController();
+  const chunks=[];const transfers=[];let bytes=0,startAtMs=null,failure=null,progressCount=0;
+  const post=(size,onProgress,signal=controller.signal)=>new Promise(resolve=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST',`https://speed.cloudflare.com/__up?_=${Date.now()}_${Math.random()}`);
+    let last=0;
+    let settled=false,timedOut=false,requestTimer,abortHandler;
+    const finish=outcome=>{if(settled)return;settled=true;clearTimeout(requestTimer);signal?.removeEventListener?.('abort',abortHandler);resolve(outcome)};
+    xhr.upload.onprogress=e=>{
+      if(!e.lengthComputable)return;
+      const delta=e.loaded-last;last=e.loaded;
+      if(delta>0&&onProgress)onProgress(delta);
+    };
+    xhr.onload=()=>{const status=Number(xhr.status),ok=(status>=200&&status<300)||status===304;finish(ok?'ok':'error')};
+    xhr.onerror=()=>finish('error');
+    xhr.onabort=()=>finish(timedOut?'error':'aborted');
+    abortHandler=()=>{try{xhr.abort()}catch{}};
+    if(signal?.aborted){finish('aborted');return}
+    signal?.addEventListener?.('abort',abortHandler,{once:true});
+    requestTimer=setTimeout(()=>{timedOut=true;try{xhr.abort()}catch{}},10000);
+    try{xhr.send(new Blob([new Uint8Array(size)],{type:'application/octet-stream'}))}catch(e){finish('error')}
+  });
+  let abortTimer;
+  try{
+    const warmupController=new AbortController(),warmupTimer=setTimeout(()=>warmupController.abort(),10000);
+    try{await post(500000,undefined,warmupController.signal)}catch{}finally{clearTimeout(warmupTimer)}
+    const started=performance.now();
+    abortTimer=setTimeout(()=>controller.abort(),durationMs+20000);
+    while(!failure&&performance.now()-started<durationMs&&bytes<maxBytes){
+      const size=Math.min(SPEED_PROFILE.uploadChunkBytes,maxBytes-bytes);
+      const t0=performance.now();
+      const outcome=await post(size,delta=>{
+        if(startAtMs===null)startAtMs=performance.now();
+        progressCount++;
+        bytes+=delta;
+        chunks.push({atMs:performance.now()-startAtMs,bytes});
+        if(performance.now()-started>=durationMs||bytes>=maxBytes)controller.abort();
+      });
+      if(outcome==='ok'){transfers.push({bytes:size,sec:(performance.now()-t0)/1000})}
+      else if(outcome==='error'){failure=new Error('Upload request failed')}
+    }
+  }finally{clearTimeout(abortTimer)}
+  const mbps=progressCount>3?medianThroughput(chunks,{rampDiscardMs:rampMs}):aggregateThroughput(transfers);
+  if(!Number.isFinite(mbps))throw failure||new Error('Insufficient upload data');
+  return{mbps,bytes};
+}
+async function runCloudflareSpeedTests(full,latency,providerLabel='Cloudflare fallback'){
+  const rampMs=Number.isFinite(latency)?clamp(latency*2,SPEED_PROFILE.rampDiscardMs,2000):SPEED_PROFILE.rampDiscardMs;
+  els.downloadMetric.textContent='Testing…';
+  els.uploadMetric.textContent='Waiting…';
+  setPill(els.downloadPill,'Testing','warn');
+  setPill(els.uploadPill,'Waiting','');
+  const windowLabel=full?'8':'4';
+  let download=NaN,upload=NaN,downBytes=0,upBytes=0;
+  els.speedProvider.textContent=`Speed: ${providerLabel}`;
+  try{
+    updateProgress(38,'Letting the connection settle before the download test…');
+    await sleep(SPEED_PROFILE.settleMs);
+    updateProgress(40,'Testing download speed…');
+    els.downloadDetail.textContent=`Streaming a ${windowLabel}-second ${providerLabel} download window…`;
+    const down=await timedDownload(full,rampMs);
+    download=down.mbps;downBytes=down.bytes;
+    els.downloadMetric.textContent=`${download.toFixed(download>=100?0:1)} Mbps`;
+    const [dl,dc]=speedStatus(download);
+    setPill(els.downloadPill,dl,dc);
+    els.downloadDetail.textContent=`${providerLabel} · median sustained rate across ${SPEED_PROFILE.downloadStreams} parallel streams · ${(downBytes/1e6).toFixed(0)} MB over ${down.durationSec.toFixed(1)} s · first ${(rampMs/1000).toFixed(1)} s ramp discarded.`;
+  }catch(e){
+    els.downloadMetric.textContent='Unavailable';
+    setPill(els.downloadPill,'Failed','warn');
+    els.downloadDetail.textContent=`Download test failed${e?.name==='AbortError'?' (timed out)':''}.`;
+  }
+  try{
+    updateProgress(64,'Testing upload speed…');
+    els.uploadMetric.textContent='Testing…';
+    setPill(els.uploadPill,'Testing','warn');
+    els.uploadDetail.textContent=`Streaming a ${windowLabel}-second ${providerLabel} upload window…`;
+    const up=await timedUpload(full,rampMs);
+    upload=up.mbps;upBytes=up.bytes;
+    els.uploadMetric.textContent=`${upload.toFixed(upload>=100?0:1)} Mbps`;
+    const [ul,uc]=speedStatus(upload);
+    setPill(els.uploadPill,ul,uc);
+    els.uploadDetail.textContent=`${providerLabel} · median sustained rate from streamed uploads totalling ${(upBytes/1e6).toFixed(0)} MB · first ${(rampMs/1000).toFixed(1)} s ramp discarded.`;
+  }catch(e){
+    els.uploadMetric.textContent='Unavailable';
+    setPill(els.uploadPill,'Failed','warn');
+    els.uploadDetail.textContent=`Upload test failed${e?.name==='AbortError'?' (timed out)':''}.`;
+  }
+  return{download,upload,downBytes,upBytes,provider:'cloudflare',speedProvider:providerLabel};
+}
+function renderFastSpeed(result){
+  const down=result.downloadResult,up=result.uploadResult;
+  els.speedProvider.textContent='Speed: FAST/Netflix primary';
+  els.downloadMetric.textContent=`${result.download.toFixed(result.download>=100?0:1)} Mbps`;
+  const [dl,dc]=speedStatus(result.download);
+  setPill(els.downloadPill,dl,dc);
+  els.downloadDetail.textContent=`FAST/Netflix Open Connect · ${down.workers} parallel connections · ${(down.bytes/1e6).toFixed(0)} MB over ${down.durationSec.toFixed(1)} s · stable estimate.`;
+  els.uploadMetric.textContent=`${result.upload.toFixed(result.upload>=100?0:1)} Mbps`;
+  const [ul,uc]=speedStatus(result.upload);
+  setPill(els.uploadPill,ul,uc);
+  els.uploadDetail.textContent=`FAST/Netflix Open Connect · ${up.workers} parallel connections · ${(up.bytes/1e6).toFixed(0)} MB over ${up.durationSec.toFixed(1)} s · stable estimate.`;
+  return{download:result.download,upload:result.upload,downBytes:down.bytes,upBytes:up.bytes,provider:'fast',speedProvider:'FAST/Netflix primary'};
+}
+async function runSpeedTests(full,latency){
+  const rampMs=Number.isFinite(latency)?clamp(latency*2,SPEED_PROFILE.rampDiscardMs,2000):SPEED_PROFILE.rampDiscardMs;
+  els.downloadMetric.textContent='Testing…';
+  els.uploadMetric.textContent='Waiting…';
+  setPill(els.downloadPill,'Testing','warn');
+  setPill(els.uploadPill,'Waiting','');
+  els.speedProvider.textContent='Speed: FAST/Netflix primary';
+  if(fast?.runFastTest){
+    try{
+      updateProgress(38,'Testing download speed with FAST/Netflix…');
+      const result=await fast.runFastTest({full,onProgress:update=>{
+        const phase=update.phase==='download',base=phase?40:68,span=phase?24:27,max=phase?(full?30000:12000):(full?30000:12000),pct=base+Math.min(span,Math.round((update.elapsedMs/max)*span));
+        updateProgress(pct,`Testing ${phase?'download':'upload'} speed with FAST/Netflix · ${update.workers} connections…`);
+      }});
+      if(!fast.isCredible(result))throw new Error('FAST result was not stable enough to use.');
+      return renderFastSpeed(result);
+    }catch(error){
+      updateProgress(38,'FAST/Netflix unavailable or unstable; using Cloudflare fallback…');
+    }
+  }else{
+    updateProgress(38,'FAST/Netflix adapter unavailable; using Cloudflare fallback…');
+  }
+  return runCloudflareSpeedTests(full,latency,'Cloudflare fallback');
+}
 function qualityScore(r){let score=100;if(!r.internetOk)return 10;score-=clamp(r.loss*2.4,0,35);if(Number.isFinite(r.latency))score-=clamp((r.latency-50)/8,0,20);else score-=20;if(Number.isFinite(r.jitter))score-=clamp((r.jitter-8)/3,0,15);else score-=15;if(Number.isFinite(r.download))score-=r.download>=50?0:r.download>=25?3:r.download>=10?7:r.download>=5?12:20;else score-=15;if(Number.isFinite(r.upload))score-=r.upload>=20?0:r.upload>=10?3:r.upload>=5?7:r.upload>=2?12:15;else score-=12;return clamp(Math.round(score),0,100)}
 function scoreLabel(score){if(score>=90)return['Excellent','good'];if(score>=78)return['Good','good'];if(score>=60)return['Fair','warn'];return['Poor','bad']}
 function classifyUseCase(type,r){if(!r.internetOk)return['POOR','bad'];const loss=r.loss,lat=r.latency,jit=r.jitter,down=r.download,up=r.upload;if(type==='gaming'){if(loss<=2&&lat<80&&jit<20)return['EXCELLENT','good'];if(loss<=5&&lat<160&&jit<40)return['GOOD','good'];if(loss<=10&&lat<250)return['FAIR','warn'];return['POOR','bad']}if(type==='calls'){if(loss<=2&&lat<150&&jit<30&&up>=5&&down>=5)return['EXCELLENT','good'];if(loss<=5&&lat<250&&up>=2&&down>=3)return['GOOD','good'];if(loss<=10&&up>=1)return['FAIR','warn'];return['POOR','bad']}if(type==='stream'){if(loss<=3&&down>=25)return['EXCELLENT','good'];if(loss<=5&&down>=10)return['GOOD','good'];if(down>=5)return['FAIR','warn'];return['POOR','bad']}if(loss<=5&&down>=10)return['EXCELLENT','good'];if(loss<=10&&down>=3)return['GOOD','good'];return down>=1?['FAIR','warn']:['POOR','bad']}
@@ -95,10 +270,11 @@ async function runChecks(full=true){
         services=await runServiceChecks();
         state.results=services.results;
         renderServices(services.results);
-        speed=await runSpeedTests(full);
+        speed=await runSpeedTests(full,probe.latency);
       }else{
         state.results=services.results;
         renderServices(services.results);
+        els.speedProvider.textContent='Speed: skipped (offline)';
         els.downloadMetric.textContent='— Mbps';
         els.uploadMetric.textContent='— Mbps';
         els.downloadDetail.textContent='Skipped because the browser reports offline.';
@@ -109,6 +285,7 @@ async function runChecks(full=true){
     }else{
       state.results=services.results;
       renderServices(services.results);
+      els.speedProvider.textContent='Speed: skipped (offline)';
       els.downloadMetric.textContent='— Mbps';
       els.uploadMetric.textContent='— Mbps';
       els.downloadDetail.textContent='Skipped because the browser reports offline.';
@@ -141,12 +318,13 @@ async function runChecks(full=true){
     els.lossDetail.textContent=`${probe.failures} failed of ${probe.total} latency probes. Application-layer approximation.`;
     setPill(els.serviceSummary,`${services.reachable}/${services.total} services reachable`,services.reachable===services.total?'good':services.reachable>0?'warn':'bad');
 
-    const result={time:Date.now(),latency:probe.latency,jitter:probe.jitter,loss:probe.loss,download:speed.download,upload:speed.upload,internetOk};
+     const result={time:Date.now(),latency:probe.latency,jitter:probe.jitter,loss:probe.loss,download:speed.download,upload:speed.upload,speedProvider:speed.speedProvider||'Unavailable',internetOk};
     const verdict=renderVerdict(result);
     state.lastResult={...result,score:verdict.s};
     updateDelta(els.latencyDelta,probe.latency,previous?.latency,true,'ms');
-    updateDelta(els.downloadDelta,speed.download,previous?.download,false,'Mbps');
-    updateDelta(els.uploadDelta,speed.upload,previous?.upload,false,'Mbps');
+     const sameSpeedProvider=previous?.speedProvider===speed.speedProvider;
+     updateDelta(els.downloadDelta,speed.download,sameSpeedProvider?previous?.download:NaN,false,'Mbps');
+     updateDelta(els.uploadDelta,speed.upload,sameSpeedProvider?previous?.upload:NaN,false,'Mbps');
     if(Number.isFinite(probe.latency)||Number.isFinite(speed.download)||Number.isFinite(speed.upload)){
       state.history.push(result);
       state.history=state.history.slice(-20);
@@ -173,7 +351,7 @@ async function runChecks(full=true){
 }
 function drawChart(canvas,data,key,suffix){const ctx=canvas.getContext('2d'),ratio=Math.max(1,Math.min(2,window.devicePixelRatio||1)),w=canvas.clientWidth||280,h=110;canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,w,h);ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1;[.25,.5,.75].forEach(f=>{ctx.beginPath();ctx.moveTo(0,h*f);ctx.lineTo(w,h*f);ctx.stroke()});const vals=data.map(d=>d[key]).filter(Number.isFinite);if(vals.length<2){ctx.fillStyle='#9aa8bd';ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillText('Run at least two checks',w/2,h/2+4);return}const max=Math.max(...vals,1)*1.15,min=Math.min(0,...vals),valid=data.filter(d=>Number.isFinite(d[key])),points=valid.map((d,i)=>({x:8+(i/(valid.length-1))*(w-16),y:h-10-((d[key]-min)/(max-min||1))*(h-22)}));const gradient=ctx.createLinearGradient(0,0,w,0);gradient.addColorStop(0,'#67a7ff');gradient.addColorStop(1,'#2ed47a');ctx.strokeStyle=gradient;ctx.lineWidth=2.5;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.fillStyle='#f4f7fb';points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,2.3,0,Math.PI*2);ctx.fill()})}
 function drawAllCharts(){drawChart(els.latencyChart,state.history,'latency','ms');drawChart(els.downloadChart,state.history,'download','Mbps');drawChart(els.uploadChart,state.history,'upload','Mbps');const last=state.history[state.history.length-1];els.latencyLatest.textContent=Number.isFinite(last?.latency)?`${Math.round(last.latency)} ms`:'— ms';els.downloadLatest.textContent=Number.isFinite(last?.download)?`${last.download.toFixed(1)} Mbps`:'— Mbps';els.uploadLatest.textContent=Number.isFinite(last?.upload)?`${last.upload.toFixed(1)} Mbps`:'— Mbps'}
-function buildReport(){const r=state.lastResult,c=navigator.connection||navigator.mozConnection||navigator.webkitConnection,lines=['NETVITALS REPORT',`Generated: ${nowLabel()}`,`Overall: ${els.overallStatus.textContent}`,`Quality: ${r?`${r.score}/100`:'Not checked'}`,`Internet: ${els.internetMetric.textContent}`,`Latency: ${els.latencyMetric.textContent}`,`Jitter: ${els.jitterMetric.textContent}`,`Request loss: ${els.lossMetric.textContent}`,`Download: ${els.downloadMetric.textContent}`,`Upload: ${els.uploadMetric.textContent}`,`Network: ${c?.effectiveType||c?.type||'Not exposed'}`,`Battery: ${els.batteryMetric.textContent}`,`Device: ${els.deviceMetric.textContent}`,`Security signals: ${state.securityResult?`${state.securityResult.score}/100 — ${state.securityResult.label}`:'Not checked'}`,'','USE CASES',`Gaming: ${els.gamingVerdict.textContent}`,`Video calls: ${els.callsVerdict.textContent}`,`Streaming: ${els.streamVerdict.textContent}`,`Browsing: ${els.browseVerdict.textContent}`,'','ENDPOINTS'];state.settings.services.forEach((s,i)=>{const x=state.results[i];lines.push(`${s.name}: ${x?(x.offline?'Offline':x.ok?`Reachable, ${Math.round(x.ms)} ms`:x.timeout?'Timed out':'Failed'):'Not checked'} — ${s.url}`)});lines.push('','Measurement notes:','Latency is a median browser HTTP RTT approximation.','Request loss is an application-layer approximation.','Security scoring covers browser-visible signals only.');return lines.join('\n')}
+function buildReport(){const r=state.lastResult,c=navigator.connection||navigator.mozConnection||navigator.webkitConnection,lines=['NETVITALS REPORT',`Generated: ${nowLabel()}`,`Overall: ${els.overallStatus.textContent}`,`Quality: ${r?`${r.score}/100`:'Not checked'}`,`Internet: ${els.internetMetric.textContent}`,`Latency: ${els.latencyMetric.textContent}`,`Jitter: ${els.jitterMetric.textContent}`,`Request loss: ${els.lossMetric.textContent}`,`Speed provider: ${r?.speedProvider||'Not checked'}`,`Download: ${els.downloadMetric.textContent}`,`Upload: ${els.uploadMetric.textContent}`,`Network: ${c?.effectiveType||c?.type||'Not exposed'}`,`Battery: ${els.batteryMetric.textContent}`,`Device: ${els.deviceMetric.textContent}`,`Security signals: ${state.securityResult?`${state.securityResult.score}/100 — ${state.securityResult.label}`:'Not checked'}`,'','USE CASES',`Gaming: ${els.gamingVerdict.textContent}`,`Video calls: ${els.callsVerdict.textContent}`,`Streaming: ${els.streamVerdict.textContent}`,`Browsing: ${els.browseVerdict.textContent}`,'','ENDPOINTS'];state.settings.services.forEach((s,i)=>{const x=state.results[i];lines.push(`${s.name}: ${x?(x.offline?'Offline':x.ok?`Reachable, ${Math.round(x.ms)} ms`:x.timeout?'Timed out':'Failed'):'Not checked'} — ${s.url}`)});lines.push('','Measurement notes:','Latency is a median browser HTTP RTT approximation.','Request loss is an application-layer approximation.','Throughput uses FAST/Netflix Open Connect when available and Cloudflare as an automatic fallback.','Security scoring covers browser-visible signals only.');return lines.join('\n')}
 async function shareReport(){const text=buildReport();try{if(navigator.share){await navigator.share({title:'NetVitals Report',text});return}await navigator.clipboard.writeText(text);const old=els.shareBtn.textContent;els.shareBtn.textContent='Copied report';setTimeout(()=>els.shareBtn.textContent=old,1400)}catch(e){if(e?.name!=='AbortError')window.prompt('Copy this report:',text)}}
 function openSettings(){els.timeoutInput.value=state.settings.timeoutMs;els.intervalInput.value=state.settings.intervalSec;renderServiceEditors(state.settings.services);els.settingsPanel.classList.add('open');document.body.style.overflow='hidden'} function closeSettings(){els.settingsPanel.classList.remove('open');document.body.style.overflow=''}
 function renderServiceEditors(services){els.serviceEditors.innerHTML='';services.forEach((s)=>{const row=document.createElement('div');row.className='service-editor';row.innerHTML=`<label>Name<input class="edit-name" value=""></label><label>HTTPS URL<input class="edit-url" type="url" value=""></label><button class="danger-button remove-service" aria-label="Remove endpoint">−</button>`;row.querySelector('.edit-name').value=s.name;row.querySelector('.edit-url').value=s.url;row.querySelector('.remove-service').addEventListener('click',()=>row.remove());els.serviceEditors.appendChild(row)})}
