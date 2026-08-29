@@ -83,7 +83,7 @@ Different endpoints have different routes, server processing times, CORS behavio
 ---
 
 ## ADR-009 — Use Cloudflare transfer endpoints for browser throughput
-**Status:** Accepted/superseded in method by ADR-019
+**Status:** Accepted for fallback; primary routing defined by ADR-025
 
 Download/upload use `speed.cloudflare.com` with duration-based measurement windows (previously adaptive payload sizes).
 
@@ -236,3 +236,93 @@ Consequence:
 - Reported download is aggregate link capacity across streams, not single-flow throughput; UI/report wording states this.
 - Worst-case Quick data use rises from ~60 MB to ~100 MB; transfers remain user-triggered (ADR-016).
 - Results still depend on the route to Cloudflare's edge and will not exactly match tools measuring different server networks (for example Netflix Open Connect caches). Exact parity with Fast.com is not claimed.
+
+---
+
+## ADR-022 — Throughput reports the median of per-second sustained rates
+**Status:** Accepted
+
+`medianThroughput()` replaces the post-ramp window mean for both download and upload. The post-ramp cumulative byte timeline is bucketed into per-second rates and the median of those rates is the reported Mbps.
+
+Reason:
+- A single window mean is dragged down by any transient dip inside the measurement window; mainstream testers (Fast.com, Ookla) report something close to the sustained capacity rather than a windowed average, and the median is a robust estimator of that sustained rate.
+- The existing per-second buckets are already available from the cumulative timeline, so the change is a small, deterministic, unit-testable transformation.
+
+Consequence:
+- Reported download/upload numbers shift slightly upward on noisy links (closer to Fast.com). Scoring thresholds and the quality-score formula are unchanged; only the sample capture improved.
+- `steadyStateThroughput` is retained for the short-window fallback path and its existing unit tests.
+
+## ADR-023 — Upload measures via XMLHttpRequest upload-progress timeline
+**Status:** Accepted
+
+Upload replaces the repeated fixed-size `fetch` POST loop with `XMLHttpRequest` bodies whose `upload.onprogress` events append into the same cumulative byte timeline used by download. The in-flight body is aborted mid-stream when the window or data cap elapses.
+
+Reason:
+- `fetch` exposes no upload-progress events, so the old loop only sampled one timing per completed 2 MB POST and paid a round-trip + server overhead per request, systematically underestimating upload on real links (browser validation showed ~40 Mbps vs ~73 Mbps for a continuous body).
+- `xhr.upload.onprogress` fires cross-origin against `speed.cloudflare.com` (validated in headless Chromium), giving a fine-grained byte timeline (~150 ms between events) that feeds the same steady-state/median math as download.
+
+Consequence:
+- Upload now reports a median sustained rate and is materially closer to Fast.com/Ookla.
+- Fallback to `aggregateThroughput` is retained when progress events never fire.
+
+## ADR-024 — Larger transfer chunks and equalized data caps
+**Status:** Accepted
+
+- Download chunk rises 25 MB → 50 MB; upload chunk rises 2 MB → 32 MB.
+- Quick data cap rises 100 MB → 250 MB, equalizing Quick and Full at 250 MB.
+
+Reason:
+- Small upload chunks left a drain gap between every POST (the dominant upload underestimate). A 32 MB body streams near-continuously within a 4 s window on typical links; a 50 MB download chunk reduces re-request frequency per stream.
+- At high speeds the old 100 MB Quick cap truncated the phase before the steady-state window could form (below `minWindowMs`), forcing the ramp-contaminated fallback. 250 MB holds a full steady-state window up to ~1.3 Gbps.
+
+Consequence:
+- Worst-case Quick data use rises from ~100 MB to ~250 MB; transfers remain user-triggered (ADR-016).
+- A parallel-upload experiment (1–8 streams) showed no reliable gain on the tested link, so upload remains sequential; download keeps 4 streams (ADR-021).
+
+---
+
+## ADR-025 — Attempt FAST/Netflix first with automatic Cloudflare fallback
+**Status:** Accepted
+
+The single Quick/Full diagnostic flow attempts direct browser throughput against
+Netflix Open Connect targets discovered through `api.fast.com`. It accepts the
+FAST result only when discovery, HTTPS target validation, progress collection,
+worker execution, and stability checks all succeed in both directions. The
+combined FAST attempt is capped at 1 GB.
+
+If discovery, CORS, target health, browser progress, duration, or stability
+checks fail, the same user action runs the existing Cloudflare throughput path.
+Users do not choose a provider. The selected provider is shown in the UI,
+stored with history, and included in reports; deltas are suppressed when the
+provider changes.
+
+Reason:
+- Netflix Open Connect is the closest browser-visible server path to FAST.com.
+- Direct use preserves the static-site architecture and avoids copying FAST.com
+  code or telemetry.
+- Cloudflare remains a dependable fallback when the undocumented upstream
+  integration is blocked or produces insufficient evidence.
+
+Trade-offs accepted:
+- `api.fast.com` and OCA behavior are undocumented and may change.
+- The current production origin does not receive CORS permission from the
+  discovery endpoint, so production currently falls back to Cloudflare until
+  upstream policy changes.
+- Provider results are route-specific and are not exact substitutes for one
+  another or for a laboratory measurement.
+- A failed FAST attempt can consume data before fallback; the FAST attempt has
+  its own hard 1 GB cap and the fallback retains its existing per-direction
+  safety caps.
+- The community `fast-cli` is not an alternative browser adapter: it runs
+  Node.js/Puppeteer on the command host. A backend using it would measure the
+  backend network, not the visitor's, and would require revisiting the static
+  architecture.
+- The quality-score formula is unchanged, but accepted throughput may come
+  from either provider and remains provider-labelled.
+
+Validation requirements:
+- unit coverage for discovery, target validation, range sizing, aggregation,
+  stability, worker scaling, cap enforcement, and credible-result rules;
+- browser checks for production-origin CORS, fallback, progress, failure, and
+  responsive UI behavior;
+- no proxy or server-side relay unless this decision is deliberately revisited.

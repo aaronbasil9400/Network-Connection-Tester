@@ -11,6 +11,7 @@ const {
   hasInternetAccess,
   runProbeSequence,
   steadyStateThroughput,
+  medianThroughput,
   aggregateThroughput
 } = require('../assets/js/metrics.js');
 
@@ -33,9 +34,9 @@ test('speed profile fixes the measurement windows, stream count, ramp discard, a
     minWindowMs: 1000,
     settleMs: 600,
     downloadStreams: 4,
-    downloadChunkBytes: 25000000,
-    uploadChunkBytes: 2000000,
-    maxQuickBytes: 100000000,
+    downloadChunkBytes: 50000000,
+    uploadChunkBytes: 33554432,
+    maxQuickBytes: 250000000,
     maxFullBytes: 250000000
   });
 });
@@ -239,6 +240,57 @@ test('merged parallel-stream timelines report combined steady-state capacity', (
   const chunks = [{ atMs: 0, bytes: 0 }, ...a, ...b];
   // Ramp baseline lands at 500 ms (5 MB); sustained window is 11 MB over 1.1 s => 80 Mbps.
   assert.ok(Math.abs(steadyStateThroughput(chunks) - 80) < 1e-6);
+});
+
+test('median throughput buckets per-second rates and returns their median', () => {
+  // Constant 100 Mbps sustained: each post-ramp second adds 12.5 MB.
+  const chunks = [];
+  for (let ms = 0; ms <= 4000; ms += 100) {
+    const bytes = ms < 500 ? (ms / 500) * 6250000 : 6250000 + (ms - 500) * 12500;
+    chunks.push({ atMs: ms, bytes });
+  }
+  assert.ok(Math.abs(medianThroughput(chunks) - 100) < 1e-6);
+});
+
+test('median throughput ignores an isolated slow second via the median', () => {
+  // Two normal seconds (~100 Mbps) and one slow second (~50 Mbps): median stays ~100.
+  // Build a 3-second post-ramp timeline: s1 100 Mbps, s2 50 Mbps, s3 100 Mbps.
+  const rampMs = 500;
+  const chunks = [{ atMs: 0, bytes: 0 }, { atMs: rampMs, bytes: 6250000 }];
+  const perSec = [12.5e6, 6.25e6, 12.5e6];
+  let bytes = 6250000;
+  let t = rampMs;
+  for (const add of perSec) {
+    t += 1000;
+    bytes += add;
+    chunks.push({ atMs: t, bytes });
+  }
+  const result = medianThroughput(chunks);
+  assert.ok(Math.abs(result - 100) < 1e-6, `expected ~100 Mbps, got ${result}`);
+});
+
+test('median throughput falls back to post-first-byte average on short windows', () => {
+  const chunks = [
+    { atMs: 0, bytes: 0 },
+    { atMs: 100, bytes: 12500 },
+    { atMs: 200, bytes: 25000 },
+    { atMs: 300, bytes: 37500 },
+    { atMs: 400, bytes: 50000 }
+  ];
+  assert.ok(Math.abs(medianThroughput(chunks) - (50000 * 8 / 0.4 / 1e6)) < 1e-12);
+});
+
+test('median throughput respects an overridden ramp discard window', () => {
+  // With rampDiscardMs=1500, the first 1.5 s is baseline; only the tail counts.
+  const chunks = [];
+  for (let ms = 0; ms <= 3000; ms += 250) {
+    const bytes = ms * 12500;
+    chunks.push({ atMs: ms, bytes });
+  }
+  const withRamp = medianThroughput(chunks, { rampDiscardMs: 1500 });
+  assert.ok(Math.abs(withRamp - 100) < 1e-6);
+  assert.ok(Number.isNaN(medianThroughput([])));
+  assert.ok(Number.isNaN(medianThroughput(null)));
 });
 
 test('aggregate throughput sums transfer bytes over summed elapsed time and ignores invalid entries', () => {

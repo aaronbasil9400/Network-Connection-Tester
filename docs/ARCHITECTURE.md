@@ -13,9 +13,11 @@ Reviewed baseline: `main` commit `1de4c4c2c713100de7cbf37556a34476e19aeb3f`.
            v                  v                  v
        index.html       service-worker.js    /ping.txt
            |
-           +--> metrics.js
-           |
-           +--> app.js
+            +--> metrics.js
+            |
+            +--> fast.js
+            |
+            +--> app.js
            |
            +--> config.js / ads.js / pwa.js
            |
@@ -23,7 +25,10 @@ Reviewed baseline: `main` commit `1de4c4c2c713100de7cbf37556a34476e19aeb3f`.
            |                      |                      |
            v                      v                      v
 same-origin latency       speed.cloudflare.com   service endpoints
-    HTTP probes            download / upload       no-cors fetch
+     HTTP probes            fallback transfers       no-cors fetch
+                               ^
+                               |
+                    api.fast.com + Netflix OCA
 ```
 
 ## `metrics.js`
@@ -146,19 +151,27 @@ This avoids relying solely on `navigator.onLine`.
 
 ## Throughput
 
-Throughput is duration-based, not size-based. Both directions measure a fixed time window against Cloudflare and report a steady-state rate. The profile is defined in `metrics.js` as `SPEED_PROFILE`:
+The app attempts FAST/Netflix Open Connect first and automatically uses
+Cloudflare if the FAST attempt is unavailable or sketchy. The provider is
+recorded on the result and report. Provider values are not treated as the same
+route for history deltas.
+
+### Cloudflare fallback profile
+
+Cloudflare throughput remains duration-based, not size-based. The profile is
+defined in `metrics.js` as `SPEED_PROFILE`:
 
 | Constant | Value |
 |---|---:|
 | quickDurationMs | 4000 |
 | fullDurationMs | 8000 |
-| rampDiscardMs | 500 |
+| rampDiscardMs | 500 (lower bound) |
 | minWindowMs | 1000 |
 | settleMs | 600 |
 | downloadStreams | 4 |
-| downloadChunkBytes | 25 MB |
-| uploadChunkBytes | 2 MB |
-| maxQuickBytes / maxFullBytes | 100 MB / 250 MB |
+| downloadChunkBytes | 50 MB |
+| uploadChunkBytes | 32 MB |
+| maxQuickBytes / maxFullBytes | 250 MB / 250 MB |
 
 ### Download
 
@@ -170,15 +183,17 @@ https://speed.cloudflare.com/__down
 
 Sequence per run:
 1. one discarded warm-up request (1 MB) establishes the connection/route,
-2. `SPEED_PROFILE.downloadStreams` (4) parallel stream loops each issue repeated streamed requests (`res.body.getReader()`, 25 MB chunks) until the shared window elapses or the shared data cap is reached,
+2. `SPEED_PROFILE.downloadStreams` (4) parallel stream loops each issue repeated streamed requests (`res.body.getReader()`, 50 MB chunks) until the shared window elapses or the shared data cap is reached,
 3. all streams append into one cumulative byte timeline; the measurement clock starts at the **first received byte on any stream**, so DNS/TCP/TLS setup is excluded by construction,
-4. the first 500 ms of the window is discarded as TCP slow-start ramp-up.
+4. an adaptive ramp-up period (`clamp(2 × measured median latency, 500, 2000)` ms) is discarded as TCP slow-start.
 
 Mbps (steady state):
 
-`(bytesAfterRamp × 8) / secondsAfterRamp / 1e6`
+The post-ramp timeline is bucketed into per-second rates and the **median** of those rates is reported:
 
-The reported value is **aggregate capacity across the parallel streams**, not single-flow throughput. A single sequential transfer systematically underestimates fast or high-latency paths and leaves drain gaps between chunk requests; parallel streams match how mainstream testers behave. If the measured window is shorter than `minWindowMs` (1000 ms), the result falls back to the post-first-byte average over the whole received stream; if no usable data was received, the phase reports `Failed`.
+`median((bytesSecond_k × 8) / 1e6)`
+
+The reported value is the **median sustained rate across the parallel streams**, not single-flow throughput. A single sequential transfer systematically underestimates fast or high-latency paths and leaves drain gaps between chunk requests; parallel streams match how mainstream testers behave. If the measured window is shorter than `minWindowMs` (1000 ms), the result falls back to the post-first-byte average over the whole received stream; if no usable data was received, the phase reports `Failed`.
 
 ### Upload
 
@@ -188,17 +203,65 @@ Endpoint:
 https://speed.cloudflare.com/__up
 ```
 
-The browser cannot observe upload progress mid-request, so upload measures repeated fixed-size POSTs (2 MB each):
+Upload streams a continuous body via `XMLHttpRequest` and reads `upload.onprogress` to build the same cumulative byte timeline:
 
 1. one discarded warm-up POST,
-2. sequential POSTs until the window elapses or the cap is reached,
-3. aggregate Mbps = summed POST bytes × 8 / summed elapsed seconds.
+2. sequential 32 MB `xhr.send` bodies whose `upload.onprogress` deltas append into the timeline until the window elapses or the cap is reached (the in-flight body is aborted mid-stream when either bound is hit),
+3. the same adaptive ramp discard and per-second median as download.
+
+If progress events never fire (e.g., a browser/environment that suppresses them), upload falls back to `aggregateThroughput` over the completed POSTs.
 
 ### Stability controls
 
 - 600 ms settle pause before the download phase and between download/upload phases.
 - A watchdog abort timer (`window + 20 s`) bounds the whole phase; partial data is still reported when the abort lands after enough bytes were transferred.
 - Data caps keep mobile usage bounded even on very fast connections.
+
+### FAST/Netflix primary profile
+
+`fast.js` uses the browser-visible flow observed in the current FAST.com client,
+without loading FAST.com code or telemetry:
+
+1. Fetch `https://api.fast.com/netflix/speedtest/v2` with the public client
+   parameters and parse only HTTPS `*.nflxvideo.net` targets containing a
+   speedtest path.
+2. Convert each target to an inclusive-corrected `/speedtest/range/0-N`
+   request path while preserving its query parameters.
+3. Start one XHR worker and add workers up to eight as aggregate progress
+   crosses the configured speed thresholds.
+4. Record progress every 150 ms and calculate a moving average over the latest
+   five byte/time snapshots.
+5. Stop after at least seven seconds when six recent estimates remain within
+   2%, or at the Quick 12-second / Full 30-second maximum.
+6. Accept the result only when both download and upload are finite, stable,
+   and progress-based. A cumulative 1 GB cap covers both directions of the
+   FAST attempt.
+
+Each request is limited to 25 MiB, active request sizes reserve the remaining
+FAST budget before starting, and progress is fed into the estimator as it
+arrives. Failed HTTP/timeout transfers roll back provisional bytes; failed or
+progress-free targets are quarantined for the rest of the attempt. Discovery
+has a nine-second timeout.
+
+The endpoint is undocumented and currently does not return an
+`Access-Control-Allow-Origin` header for `https://netvitals.net`; therefore a
+production browser normally reaches the Cloudflare fallback. No proxy is part
+of the current static architecture.
+
+### CLI versus browser execution
+
+The community `sindresorhus/fast-cli` project uses Node.js and Puppeteer to
+drive FAST.com from the machine running the command. It is useful as a local
+CLI, but it cannot be invoked by a static page on a visitor's device. Running
+it in a backend would measure that backend's network rather than the visitor's
+and would introduce a different architecture. It also does not change browser
+CORS rules for NetVitals' direct `api.fast.com` request.
+
+CORS (Cross-Origin Resource Sharing) is the browser policy that controls
+whether JavaScript from one origin may read a response from another. The FAST
+discovery response must grant `https://netvitals.net` with
+`Access-Control-Allow-Origin`; NetVitals cannot add that response header from
+its own static files.
 
 ## Diagnostic orchestration
 
@@ -215,9 +278,9 @@ start
  |
  +--> configured service checks
  |
- +--> download
- |
- +--> upload
+  +--> FAST/Netflix download and upload attempt
+  |       |
+  |       +--> Cloudflare download/upload fallback when needed
  |
  +--> internet-access decision
  |
@@ -232,6 +295,9 @@ start
 
 If the browser reports offline, transfer work is skipped.
 
+If the browser reports online but FAST discovery or either FAST direction is
+unavailable, the Cloudflare fallback runs without an additional user choice.
+
 ## Quality scoring
 
 Base: 100.
@@ -244,6 +310,10 @@ Maximum penalty categories:
 - upload: 15
 
 Because category penalties can sum above 100, final score is clamped to 0–100.
+
+Download and upload penalties use the selected provider's accepted result. The
+formula is unchanged when the provider changes; the provider label is retained
+so results remain interpretable.
 
 If internet access is false, score is directly set to 10.
 
@@ -310,12 +380,13 @@ The storage-key names are legacy implementation identifiers; changing them can r
 ## PWA cache
 
 Current cache:
-`netvitals-v6`
+`netvitals-v8`
 
 Core versioned assets:
 - `site.css?v=4`
-- `metrics.js?v=5`
-- `app.js?v=6`
+- `metrics.js?v=6`
+- `fast.js?v=1`
+- `app.js?v=8`
 
 A release that changes these files should update cache/versioning consistently.
 
@@ -339,7 +410,13 @@ The `Permissions-Policy` disables camera, microphone, and geolocation. NetVitals
 Behavioral unit tests for measurement math and sequence semantics.
 
 ### `app.test.js`
-Source-contract tests protecting critical browser-visible security and probe architecture/report wording.
+Source-contract tests protecting critical browser-visible security, probe
+architecture, provider fallback, and report wording.
+
+### `fast.test.js`
+Behavioral tests for FAST discovery/target validation, range construction,
+moving-average and stability math, worker thresholds, cumulative cap behavior,
+and credible result requirements.
 
 ### `validate_site.py`
 Repository/site validator covering:

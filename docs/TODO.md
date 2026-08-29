@@ -20,16 +20,12 @@ Add deterministic cases for:
 
 Protect Gaming, Video Calls, Streaming and Browsing classifications from accidental threshold drift.
 
-### [ ] Evaluate upload-test methodology
+### [x] Evaluate upload-test methodology
 
-Upload currently times a browser `fetch()` POST to Cloudflare using `mode: no-cors`.
-
-Investigate how browser buffering/request completion affects reported upload throughput across Chrome/Safari/Firefox.
-
-Acceptance:
-- methodology documented,
-- representative browser comparison recorded,
-- implementation changed only if evidence supports it.
+Completed 2026-08-29. Cloudflare upload now uses an XMLHttpRequest upload-
+progress timeline with a 32 MB body, mid-body abort, and an aggregate fallback
+when progress events are unavailable. Headless Chromium validation recorded the
+methodology and showed the expected improvement over the old small POST loop.
 
 ## P1 — Reliability / maintainability
 
@@ -86,6 +82,10 @@ Add Playwright tests for:
 - mocked probe results
 - offline state
 - responsive layout basics.
+
+The current FAST fallback behavior has been manually smoke-tested with
+headless Chromium, but the browser scenarios are not yet committed as a
+repository E2E suite.
 
 ### [ ] Add CI
 
@@ -197,8 +197,8 @@ Periodically verify:
 Proposed 2026-08-22 from a methodology review of `metrics.js` / `app.js`.
 Ordered in implementation phases by risk/effort; none are started.
 Every code item here requires: node tests, `validate_site.py`, the standard
-cache/version bump (`?v=5`, service-worker cache, precache list) when core
-cached JS changes, and documentation sync per `AGENTS.md`.
+matching asset/service-worker cache-version updates when core cached JS
+changes, and documentation sync per `AGENTS.md`.
 
 ### Phase 1 — Low-risk precision (no semantic rewording)
 
@@ -236,18 +236,41 @@ cached JS changes, and documentation sync per `AGENTS.md`.
   "aggregate capacity". Update ADR-009/ADR-019, AGENTS.md speed profile,
   README wording; add merged-timeline unit tests.
 
-- [ ] **Upload via XHR progress events** (`app.js` `timedUpload()`)
-  Replace awaited-fetch POST loop with `xhr.upload.onprogress` byte-timeline
-  accumulation feeding `steadyStateThroughput()` (same ramp discard as
-  download); fall back to `aggregateThroughput()` when progress events do not
-  fire. Completing this partially closes the P0 upload-methodology item above;
-  record the browser comparison in DECISIONS.md there or here.
+- [x] **Upload via XHR progress events** (`app.js` `timedUpload()`)
+  Shipped 2026-08-29 (ADR-023). `xhr.upload.onprogress` byte-timeline feeds
+  `medianThroughput()` (same adaptive ramp discard as download); falls back to
+  `aggregateThroughput()` when progress events do not fire. Upload chunk raised
+  to 32 MB to remove the per-POST drain gap (browser-validated ~40→~59 Mbps on
+  a real link). Mid-body abort when the window or cap elapses.
 
-- [ ] **Latency-adaptive ramp discard** (both throughput phases)
-  Replace fixed 500 ms ramp discard with `clamp(2 x measured median latency,
-  500, 2000)` ms passed into download/upload; TCP slow-start lasts longer on
-  high-RTT paths. `SPEED_PROFILE` constants remain the bounds. Deterministic
-  and unit-testable.
+- [x] **Latency-adaptive ramp discard** (both throughput phases)
+  Shipped 2026-08-29. `rampMs = clamp(2 × measured median latency, 500, 2000)`
+  threaded from `runSpeedTests(full, latency)` into `timedDownload`/`timedUpload`
+  and passed as `rampDiscardMs`. Deterministic and unit-tested.
+
+- [x] **Median-of-per-second throughput reporting** (both throughput phases)
+  Shipped 2026-08-29 (ADR-022). `medianThroughput()` buckets the post-ramp
+  timeline into per-second rates and reports their median, replacing the window
+  mean. `steadyStateThroughput` retained for the short-window fallback.
+
+- [x] **Equalized data caps and larger chunks**
+  Shipped 2026-08-29 (ADR-024). Quick cap 100→250 MB (equal to Full); download
+  chunk 25→50 MB; upload chunk 2→32 MB.
+
+- [x] **FAST/Netflix primary with Cloudflare fallback**
+  Shipped 2026-08-29 (ADR-025). Direct browser discovery and validated Netflix
+  OCA targets use adaptive 1–8 workers, 150 ms progress snapshots, a five-
+  snapshot moving average, six-measurement/2% stability acceptance, and a
+  cumulative 1 GB FAST-attempt cap. Discovery, CORS, target, progress, and
+  stability failures automatically use the Cloudflare path without a provider
+  selection. The current production CORS policy blocks `https://netvitals.net`,
+  so production currently exercises the fallback.
+
+- [ ] **Revisit the total click data budget**
+  FAST has a cumulative 1 GB cap, while a failed FAST attempt can still be
+  followed by the Cloudflare fallback's separate per-direction caps. If FAST
+  becomes available on production, decide whether one aggregate budget should
+  cover both attempts.
 
 ### Phase 3 — New signals (largest verdict value; new ADRs)
 

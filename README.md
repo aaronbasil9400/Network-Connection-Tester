@@ -1,6 +1,6 @@
 # NetVitals
 
-NetVitals is a static, mobile-first browser diagnostic for internet reachability, HTTP latency, jitter, application-layer request loss, fixed-duration download/upload throughput windows against Cloudflare, browser-visible connection information, device information, and browser-visible security signals.
+NetVitals is a static, mobile-first browser diagnostic for internet reachability, HTTP latency, jitter, application-layer request loss, browser throughput, browser-visible connection information, device information, and browser-visible security signals. Throughput uses FAST/Netflix Open Connect as the primary browser path when available and switches automatically to Cloudflare when the primary path is unavailable or unstable.
 
 Production site:
 
@@ -18,11 +18,31 @@ Cloudflare Pages
 NetVitals in browser
   |
   +--> same-origin /ping.txt
+  +--> api.fast.com and validated *.nflxvideo.net targets
   +--> speed.cloudflare.com
   +--> configured HTTPS service checks
 ```
 
 The core diagnostic runs entirely in the visitor's browser. No application backend or database is required.
+
+### FAST CLI distinction
+
+The community [`fast-cli`](https://github.com/sindresorhus/fast-cli) project is
+not a drop-in browser library. It uses Node.js and Puppeteer to run FAST.com
+from the machine where the command is installed:
+
+```bash
+npm install --global fast-cli
+fast --upload --json
+```
+
+Running that command on a server would measure the server's connection, not the
+visitor's. A static browser page cannot invoke a visitor's local CLI, and the
+CLI does not grant `https://netvitals.net` permission to read the separate
+`api.fast.com` response. NetVitals therefore keeps its direct browser adapter
+and automatic Cloudflare fallback. A server-side relay would be a deliberate
+architecture change and would need separate operational and third-party-policy
+review.
 
 ## What it measures
 
@@ -40,11 +60,17 @@ Percentage of measured `/ping.txt` requests that fail.
 This is **application-layer request loss**, not raw packet loss.
 
 ### Download / upload
-Fixed-duration streamed transfers using Cloudflare speed-test endpoints.
+The diagnostic first attempts direct browser transfers to validated Netflix Open Connect targets discovered through `api.fast.com`. The primary path starts with one worker, grows to at most eight workers from aggregate-speed thresholds, samples progress every 150 ms, and stops after a stable estimate or its bounded duration. It requires stable progress-based estimates in both directions and caps the combined FAST attempt at 1 GB.
 
-Each direction runs a 4 s (Quick) or 8 s (Full) measurement window after one discarded warm-up transfer. The download clock starts at the first received byte (connection setup excluded) and the first 500 ms of the window is discarded as TCP ramp-up, so the reported value is a steady-state rate rather than an average that includes connection startup.
+If discovery, CORS, target health, browser progress, or stability checks fail, the same user action continues automatically with the Cloudflare fallback. Cloudflare uses a 4 s (Quick) or 8 s (Full) fixed-duration window, four parallel download streams, streamed upload progress, an adaptive ramp discard (`clamp(2 × median latency, 500, 2000)` ms), and a 250 MB cap per direction. The selected provider is shown in the result and report; values from different providers are not compared as if they used the same route.
 
-Download runs four parallel streams and reports **aggregate link capacity**, which tracks multi-connection testers such as Fast.com much more closely than a single sequential transfer. Results still depend on your route to Cloudflare's edge and can differ from tools measuring other server networks.
+The current `api.fast.com` discovery response does not grant CORS access to `https://netvitals.net`, so the production site currently exercises the Cloudflare fallback. No proxy is used; FAST becomes active only if the upstream browser-access policy permits the deployed origin.
+
+For the browser path, CORS means Cross-Origin Resource Sharing. Because
+`netvitals.net` and `api.fast.com` are different origins, the FAST discovery
+response must include an `Access-Control-Allow-Origin` header for
+`https://netvitals.net`. This is controlled by the FAST endpoint, not by the
+NetVitals static files.
 
 ### Security
 Only signals visible to a normal web page, such as HTTPS/secure context, mixed content, endpoint transport, embedding, and Web Crypto availability.
@@ -55,6 +81,9 @@ NetVitals cannot directly inspect Wi-Fi encryption, router configuration, LAN de
 
 Measurement profile:
 
+The fixed-window rows below describe the Cloudflare fallback. FAST uses its
+stability-based profile shown in the additional rows.
+
 | | Quick | Full |
 |---|---:|---:|
 | Warm-up latency probes | 2 | 2 |
@@ -64,9 +93,13 @@ Measurement profile:
 | Download window | 4 s | 8 s |
 | Upload window | 4 s | 8 s |
 | Parallel download streams | 4 | 4 |
-| Throughput data cap | 100 MB | 250 MB |
+| FAST maximum duration | 12 s | 30 s |
+| FAST stable-after threshold | 7 s | 7 s |
+| FAST worker range | 1–8 | 1–8 |
+| FAST cumulative attempt cap | 1 GB | 1 GB |
+| Cloudflare fallback cap | 250 MB per direction | 250 MB per direction |
 
-Warm-ups are discarded from latency, jitter and request-loss calculations. Each throughput direction discards one warm-up transfer, and the download result excludes the first 500 ms ramp-up of the measured window.
+Warm-ups are discarded from latency, jitter and request-loss calculations. The FAST path uses progress-driven stability; the Cloudflare fallback uses one discarded warm-up transfer per direction and excludes the adaptive ramp-up period (`clamp(2 × median latency, 500, 2000)` ms) from its measured window.
 
 ## Project structure
 
@@ -79,6 +112,7 @@ Warm-ups are discarded from latency, jitter and request-loss calculations. Each 
 │   ├── css/site.css
 │   ├── js/
 │   │   ├── app.js
+│   │   ├── fast.js
 │   │   ├── metrics.js
 │   │   ├── config.js
 │   │   ├── ads.js
@@ -94,6 +128,7 @@ Warm-ups are discarded from latency, jitter and request-loss calculations. Each 
 │   └── TODO.md
 ├── tests/
 │   ├── app.test.js
+│   ├── fast.test.js
 │   ├── metrics.test.js
 │   └── validate_site.py
 ├── manifest.webmanifest
@@ -120,11 +155,11 @@ Then open:
 ## Automated validation
 
 ```bash
-node --test tests/app.test.js tests/metrics.test.js
+node --test tests/app.test.js tests/metrics.test.js tests/fast.test.js
 python3 tests/validate_site.py
 ```
 
-The validator checks site structure, JavaScript syntax, PWA/probe cache rules, metadata, AdSense consistency, and the Node tests.
+The validator checks site structure, JavaScript syntax, PWA/probe cache rules, metadata, AdSense consistency, and all Node tests, including the FAST adapter tests.
 
 ## Critical accuracy rule
 

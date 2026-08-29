@@ -7,7 +7,7 @@ The repository already has useful dependency-light tests.
 Run from repository root:
 
 ```bash
-node --test tests/app.test.js tests/metrics.test.js
+node --test tests/app.test.js tests/metrics.test.js tests/fast.test.js
 python3 tests/validate_site.py
 ```
 
@@ -44,6 +44,20 @@ Any change to measurement semantics must update tests intentionally.
 - non-OK/body validation
 - Resource-Timing RTT preference with wall-clock fallback for latency samples
 - report wording remains accurate
+- automatic FAST/Netflix primary and Cloudflare fallback contracts
+
+`tests/fast.test.js` protects:
+
+- discovery URL and CORS request options
+- HTTPS `*.nflxvideo.net` target validation
+- inclusive-corrected range URL construction
+- five-snapshot moving-average throughput
+- six-measurement/2% stability stopping
+- 1–8 worker scaling thresholds
+- cumulative 1 GB attempt cap with progress XHRs
+- live progress accounting and rollback of failed transfers
+- no-progress target quarantine and target failover
+- rejection of unstable or provider-mismatched results
 
 ## Static/site validator
 
@@ -154,10 +168,12 @@ Do not compare this directly with ICMP packet-loss tools as if they are equivale
 ## Throughput validation
 
 Unit tests (`metrics.test.js`) cover the pure math:
-- `SPEED_PROFILE` window/ramp/cap values
+- `SPEED_PROFILE` window/ramp/cap/chunk values
 - steady-state rate excludes the ramp and reports the sustained window only
+- median throughput buckets per-second rates and returns their median, ignores an isolated slow second, falls back on short windows, and respects an overridden ramp discard
 - short-window fallback to the post-first-byte average
 - aggregate upload throughput sums bytes over summed time and ignores invalid entries
+- merged parallel-stream timelines
 
 Manual/browser tests:
 - Quick download/upload (4 s windows)
@@ -166,6 +182,26 @@ Manual/browser tests:
 - fast connection
 - blocked `speed.cloudflare.com`
 - request timeout/failure mid-window (partial data should still report when enough bytes arrived)
+- upload must abort mid-body when the window/cap elapses (not hang until the watchdog)
+
+### FAST primary validation
+
+Automated adapter tests use a fake XHR transport to verify live progress
+accounting, rollback of failed transfers, stable stopping, worker growth,
+no-progress target quarantine, target failover, and that requested bytes stay
+within the cumulative cap.
+
+Manual/browser tests:
+- production-origin discovery request to `api.fast.com` must either return
+  readable JSON or fall through to Cloudflare within the discovery timeout;
+- valid OCA target requests must show progress and status validation;
+- a target with no progress is quarantined and the next target is tried;
+- failed, non-progress, capped, and unstable FAST attempts must use the
+  Cloudflare fallback without another user selection;
+- accepted results and reports must show the selected provider;
+- history deltas must be blank when the provider changes;
+- no FAST result may be accepted without stable progress estimates in both
+  directions.
 
 Verify the UI reports `Unavailable/Failed` cleanly when the external endpoint cannot be used.
 
@@ -174,6 +210,8 @@ Results are steady-state estimates; compare against a conventional speed test on
 ### Validation record
 
 - 2026-08-22 — developer manual browser cross-check of the duration-based windows against Fast.com: results were near-parity (within normal methodology tolerance). Confirms the connection-setup exclusion and ramp discard removed the previous systematic underestimate. Single-reference sanity check only; not a certification of absolute accuracy.
+- 2026-08-29 — headless-Chromium validation of the Fast.com-parity upgrade (ADRs 022–024): app loads with no console errors, download reports ~84–164 Mbps and upload ~37–59 Mbps on a shared ~150/73 Mbps link. Upload XHR byte-timeline reached the ~73 Mbps single-stream ceiling (up from ~40 Mbps with the old 2 MB POST loop). Upload stream-count experiment (1–8) showed no reliable gain, so upload stays sequential.
+- 2026-08-29 — deployed-origin CORS probe in headless Chromium: `api.fast.com` returned `Failed to fetch` for `https://netvitals.net` because the GET response omitted `Access-Control-Allow-Origin`; the local automatic-flow smoke test then completed with `Speed: Cloudflare fallback`, no page errors, and Cloudflare download/upload results. This is an expected fallback validation, not a successful FAST-primary measurement.
 
 ## Service-check validation
 

@@ -60,6 +60,17 @@ This is the preferred place for testable metric-algorithm changes.
 
 **Risk:** High.
 
+### `assets/js/fast.js`
+
+Role:
+- FAST-compatible Netflix Open Connect discovery
+- adaptive download/upload workers
+- progress aggregation and stability checks
+- target validation and failure handling
+
+The module is loaded after `metrics.js` and before `app.js`. It is an
+undocumented third-party integration and must always have a working fallback.
+
 ### `assets/css/site.css`
 
 Role:
@@ -149,6 +160,16 @@ Contract/source tests:
 - latency-probe cache behavior
 - report limitation wording
 
+### `tests/fast.test.js`
+
+Behavioral tests for:
+- discovery URL and target validation
+- range URL construction
+- moving-average/stability math
+- worker scaling
+- cumulative data-budget enforcement
+- provider result credibility
+
 ### `tests/validate_site.py`
 
 Whole-site validation:
@@ -212,7 +233,7 @@ Do not inspect binary icons for ordinary diagnostic changes.
 |---|---|
 | Latency/jitter/loss math | `metrics.js` + `metrics.test.js` |
 | Latency endpoint behavior | `app.js` + `ping.txt` + `_headers` + service worker |
-| Speed test | `app.js` |
+| Speed test | `fast.js` + `app.js` |
 | Quality score | `app.js` + add/update tests |
 | Gaming/call/stream verdicts | `app.js` |
 | Security signals | `app.js` + `app.test.js` |

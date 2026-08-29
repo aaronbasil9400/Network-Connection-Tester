@@ -1,0 +1,5 @@
+# Generated artifacts (local tooling / knowledge graph)
+graphify-out/
+
+# macOS
+.DS_Store

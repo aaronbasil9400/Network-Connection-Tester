@@ -25,6 +25,8 @@ Use this checklist before each public NetVitals release. Record the release date
 - [ ] In browser DevTools, confirm diagnostic `/ping.txt` requests have unique query strings and do not come from the service-worker, memory, or disk cache.
 - [ ] Run one Quick check and one Full diagnostic; verify measured-probe counts and clear unavailable/failure states.
 - [ ] Smoke-test Cloudflare download and upload transfers, including a clean failure state if the endpoint is unavailable.
+- [ ] Smoke-test FAST discovery from the deployed origin; verify automatic Cloudflare fallback when CORS, target health, progress, or stability evidence is unavailable.
+- [ ] Confirm the FAST attempt's cumulative 1 GB cap and provider label/report wording.
 - [ ] Confirm production pages, canonical links, navigation, manifest, and icons load without console errors.
 
 ## Release handoff

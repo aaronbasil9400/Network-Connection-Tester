@@ -42,17 +42,25 @@ https://netvitals.net
       |
       v
 Visitor's browser
-      |
-      +--> /ping.txt on NetVitals origin
-      |
-      +--> speed.cloudflare.com
+       |
+       +--> /ping.txt on NetVitals origin
+       |
+       +--> api.fast.com discovery and validated Netflix OCA targets
+       |
+       +--> speed.cloudflare.com
       |
       +--> configured HTTPS service endpoints
 ```
 
 Core diagnostics execute in the browser.
 
-No application server or database is required.
+No application server or database is required. FAST discovery and transfer
+requests are attempted directly by the browser; the app does not proxy them.
+The current production FAST discovery response does not grant CORS access to
+`https://netvitals.net`, so Cloudflare fallback remains essential unless the
+upstream policy changes.
+The community Node.js/Puppeteer `fast-cli` is a separate local tool; running it
+on a backend would measure that backend's connection rather than the visitor's.
 
 ## Why static hosting fits
 
@@ -102,9 +110,19 @@ This is an application-layer request-failure estimate and must not be called raw
 
 ### Throughput
 
-Download and upload use Cloudflare's public speed-test transfer endpoints.
+The browser first attempts FAST/Netflix Open Connect using the public discovery
+endpoint `https://api.fast.com/netflix/speedtest/v2`. It validates HTTPS
+`*.nflxvideo.net` targets, starts with one worker, scales to at most eight,
+aggregates 150 ms progress snapshots with a five-snapshot moving average, and
+accepts only stable progress-based estimates. Quick runs stop no later than 12
+seconds; Full runs stop no later than 30 seconds. The cumulative FAST attempt
+cap is 1 GB across download and upload.
 
-Each direction measures a fixed-duration window (4 s Quick, 8 s Full) with one discarded warm-up transfer; download excludes the first 500 ms of the window as TCP ramp-up.
+If discovery, CORS, target health, browser progress, or stability checks fail,
+the same run uses the Cloudflare fallback. Cloudflare measures fixed-duration
+4 s Quick / 8 s Full windows with one discarded warm-up transfer per direction,
+four parallel download streams, streamed upload progress, and the adaptive
+ramp-up discard (`clamp(2 × median latency, 500, 2000)` ms).
 
 ### Service checks
 
@@ -128,7 +146,8 @@ Difference in latency sampling:
 
 Both discard 2 initial warm-up probes.
 
-Throughput windows are longer in Full mode (8 s vs 4 s per direction).
+Throughput windows are longer in Full mode for the Cloudflare fallback. FAST
+uses its stability-based duration profile in both modes.
 
 ## Local state
 
