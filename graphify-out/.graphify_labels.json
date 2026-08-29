@@ -1,0 +1,20 @@
+{
+  "0": "app.js",
+  "1": "Architecture",
+  "2": "TODO / Technical Debt",
+  "3": "AGENTS.md",
+  "4": "File Map",
+  "5": "Architecture Decisions",
+  "6": "Testing Strategy",
+  "7": "Project Context",
+  "8": "NetVitals",
+  "9": "metrics.test.js",
+  "10": "Active implementation",
+  "11": "app.test.js",
+  "12": "SiteHTMLParser",
+  "13": "Release Checklist",
+  "14": "service-worker.js",
+  "15": "ads.js",
+  "16": "config.js",
+  "17": "pwa.js"
+}
