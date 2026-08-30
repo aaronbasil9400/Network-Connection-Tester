@@ -61,7 +61,7 @@ if (ROOT/'ads.txt').read_text(encoding='utf-8').strip() != expected_ads_txt: err
 
 metrics_script='<script src="/assets/js/metrics.js?v=6"></script>'
 fast_script='<script src="/assets/js/fast.js?v=1"></script>'
-app_script='<script src="/assets/js/app.js?v=8"></script>'
+app_script='<script src="/assets/js/app.js?v=9"></script>'
 if homepage.count(metrics_script) != 1: errors.append('homepage must load metrics.js exactly once')
 if homepage.count(fast_script) != 1: errors.append('homepage must load fast.js exactly once')
 if homepage.count(app_script) != 1: errors.append('homepage must load app.js exactly once')
@@ -77,7 +77,7 @@ if not ping_headers or 'Cache-Control: no-store' not in ping_headers.group(1): e
 
 worker=(ROOT/'service-worker.js').read_text(encoding='utf-8')
 assets_match=re.search(r'const ASSETS=\[(.*?)\];',worker,re.S)
-for asset in ['/assets/css/site.css?v=4','/assets/js/metrics.js?v=6','/assets/js/fast.js?v=1','/assets/js/app.js?v=8']:
+for asset in ['/assets/css/site.css?v=6','/assets/js/metrics.js?v=6','/assets/js/fast.js?v=1','/assets/js/app.js?v=9']:
     if not assets_match or asset not in assets_match.group(1): errors.append(f'service worker must precache {asset}')
 if assets_match and '/ping.txt' in assets_match.group(1): errors.append('service worker must not precache ping.txt')
 ping_bypass="url.pathname==='/ping.txt'"

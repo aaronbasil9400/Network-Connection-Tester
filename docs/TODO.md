@@ -176,7 +176,7 @@ Test thoroughly before enforcing.
 ### [ ] Automate cache-version management
 
 Currently developers must coordinate:
-- `?v=4` references
+- asset query-string versions (currently `site.css?v=6`, `app.js?v=9`)
 - service-worker cache name
 - precache URLs
 

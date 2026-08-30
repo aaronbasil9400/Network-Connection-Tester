@@ -2,6 +2,29 @@
 
 Use this file to identify the minimum file set for a task.
 
+## Design system
+
+### `DESIGN.md`
+
+Role:
+- visual identity source of truth ("Vitals Monitor")
+- color/typography/shape/component tokens + rationale
+
+Read for:
+- any visual/UI change
+- the ECG progress-bar design
+- the retired "AI dashboard" clichés to avoid
+
+### `docs/UI_REVAMP_PLAN.md`
+
+Role:
+- implementation record and testing plan for the Vitals Monitor redesign
+
+### `assets/fonts/`
+
+Role:
+- self-hosted WOFF2 (IBM Plex Sans + IBM Plex Mono) referenced by `@font-face` in `site.css`
+
 ## Core diagnostic
 
 ### `index.html`
@@ -239,6 +262,7 @@ Do not inspect binary icons for ordinary diagnostic changes.
 | Security signals | `app.js` + `app.test.js` |
 | Service endpoints | `app.js` |
 | Mobile UI | `index.html` + `site.css` |
+| Design system / visual redesign | `DESIGN.md` + `docs/UI_REVAMP_PLAN.md` + `site.css` + `index.html` |
 | PWA/cache | `service-worker.js` + `pwa.js` |
 | AdSense | `config.js` + `ads.js` + HTML pages + validator |
 | SEO | affected HTML + sitemap/robots + validator |

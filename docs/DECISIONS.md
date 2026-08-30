@@ -326,3 +326,31 @@ Validation requirements:
 - browser checks for production-origin CORS, fallback, progress, failure, and
   responsive UI behavior;
 - no proxy or server-side relay unless this decision is deliberately revisited.
+
+---
+
+## ADR-026 — "Vitals Monitor" design system and ECG progress bar
+**Status:** Accepted and implemented (see `docs/UI_REVAMP_PLAN.md` for the validation matrix)
+
+The visual identity becomes the **Vitals Monitor** system defined in `DESIGN.md`:
+the network is framed as a patient, the diagnostic as a check-up, and the progress
+bar as a decorative ECG heartbeat trace. The palette is a screen-black with
+phosphor-green signal and an amber/red alarm ladder; typography is IBM Plex Sans
+(headings/body) with IBM Plex Mono (numeric readouts). Self-hosted WOFF2 fonts are
+preferred to keep the static/privacy-first posture.
+
+The ECG trace is a *health visualization only* — decorative, not a measurement. It
+must never be presented as medical data, and it must not alter or misrepresent any
+measurement label.
+
+The existing 7px progress bar is replaced by the ECG fill. To keep the change minimal
+and the waveform undistorted, the fill is revealed with CSS `clip-path` in
+`updateProgress()` rather than by resizing the SVG. This is a presentational change;
+no measurement, scoring, verdict, security, storage, or report wording changes.
+
+Consequence:
+- `site.css` and `app.js` change, so their cache/query versions bump
+  (`site.css?v=6`, `app.js?v=9`, service worker `netvitals-v10`).
+- `validate_site.py` hardcoded version strings are updated in the same change.
+- The retired clichés (blue gradient buttons, glassmorphism blur, neon glows) are
+  intentionally excluded and guarded by the visual test matrix in `TESTING.md`.

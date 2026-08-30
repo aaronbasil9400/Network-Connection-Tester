@@ -1,13 +1,13 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="author" content="Aaron Basil Raj"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>NetVitals – Internet Speed, Latency, Jitter & Network Test</title><meta name="description" content="Test internet speed, latency, jitter, request loss and browser-visible connection security from your browser.">
 <meta name="robots" content="index,follow,max-image-preview:large">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#0A0E0C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="NetVitals">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml"><link rel="icon" href="/assets/icons/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-<link rel="stylesheet" href="/assets/css/site.css?v=4">
+<link rel="stylesheet" href="/assets/css/site.css?v=6">
 <script src="/assets/js/config.js"></script><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4936629245103906" crossorigin="anonymous"></script><link rel="canonical" href="https://netvitals.net/"><meta property="og:type" content="website"><meta property="og:title" content="NetVitals – Internet Diagnostic"><meta property="og:description" content="Test internet speed, latency, jitter, request loss and browser-visible security signals."><meta property="og:url" content="https://netvitals.net/"><meta property="og:image" content="https://netvitals.net/assets/icons/icon-512.png"><meta name="twitter:card" content="summary"><script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"NetVitals","applicationCategory":"UtilitiesApplication","operatingSystem":"Any","url":"https://netvitals.net/","description":"Browser-based internet connection diagnostic for speed, latency, jitter and request loss."}</script></head><body><nav class="site-nav" aria-label="Primary navigation">
 <a class="brand" href="/"><span class="brand-mark">NV</span><span>NetVitals</span></a>
 <div class="nav-links"><a href="/#diagnostic-tool">Test</a><a href="/how-it-works/">How it works</a><a href="/about/">About</a><a href="/privacy/">Privacy</a><a href="/contact/">Contact</a></div>
@@ -27,7 +27,18 @@
       <div class="score-block"><div class="score" id="qualityScore">—<small>/100</small></div><div class="score-label" id="qualityLabel">Quality</div></div>
     </div>
     <div class="hero-meta"><span id="lastCheck">No checks run yet</span><span id="testDuration">Duration: —</span><span id="speedProvider">Speed: automatic provider selection</span></div>
-    <div class="progress-track" aria-hidden="true"><span id="runProgress"></span></div>
+    <div class="ecg-label"><span class="rec">Monitoring network vitals</span><span class="live">Live</span></div>
+    <div class="ecg-progress" aria-hidden="true">
+      <svg class="ecg-ghost" width="100%" height="100%" viewBox="0 0 800 120" preserveAspectRatio="none" aria-hidden="true">
+        <polyline fill="none" points="0,72 34,72 42,68 50,72 62,72 70,84 78,72 92,72 100,20 108,96 116,72 132,72 150,57 168,72 204,72 212,68 220,72 232,72 240,84 248,72 262,72 270,20 278,96 286,72 302,72 320,57 338,72 374,72 382,68 390,72 402,72 410,84 418,72 432,72 440,20 448,96 456,72 472,72 490,57 508,72 544,72 552,68 560,72 572,72 580,84 588,72 602,72 610,20 618,96 626,72 642,72 660,57 678,72 714,72 722,68 730,72 742,72 750,84 758,72 772,72 780,20 788,96 796,72 800,72"></polyline>
+      </svg>
+      <div class="ecg-fill" id="runProgress">
+        <svg width="100%" height="100%" viewBox="0 0 800 120" preserveAspectRatio="none" aria-hidden="true">
+          <polyline fill="none" points="0,72 34,72 42,68 50,72 62,72 70,84 78,72 92,72 100,20 108,96 116,72 132,72 150,57 168,72 204,72 212,68 220,72 232,72 240,84 248,72 262,72 270,20 278,96 286,72 302,72 320,57 338,72 374,72 382,68 390,72 402,72 410,84 418,72 432,72 440,20 448,96 456,72 472,72 490,57 508,72 544,72 552,68 560,72 572,72 580,84 588,72 602,72 610,20 618,96 626,72 642,72 660,57 678,72 714,72 722,68 730,72 742,72 750,84 758,72 772,72 780,20 788,96 796,72 800,72"></polyline>
+        </svg>
+      </div>
+      <span class="ecg-dot" id="runProgressDot"></span>
+    </div>
     <div class="progress-text" id="progressText">Choose a quick check or full diagnostic.</div>
     <div class="controls">
       <button class="primary-button" id="fullBtn">Full diagnostic</button>
@@ -105,4 +116,4 @@
 <a class="guide-link" href="/guides/how-speed-tests-work/"><strong>How speed tests work</strong><span>Why different test sizes and servers produce different results.</span></a>
 </div></article>
 <div class="ad-slot" aria-label="Advertisement"><ins class="adsbygoogle" style="display:block" data-ad-format="auto" data-full-width-responsive="true"></ins></div>
-</section><footer class="site-footer"><div class="footer-links"><a href="/about/">About</a><a href="/how-it-works/">How it works</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/contact/">Contact</a></div><div>© <span id="year"></span> NetVitals. Developed by Aaron Basil Raj. Browser-based network diagnostics. Measurements are estimates and should not be treated as a security audit.</div></footer><script>document.getElementById('year').textContent=new Date().getFullYear()</script><script src="/assets/js/metrics.js?v=6"></script><script src="/assets/js/fast.js?v=1"></script><script src="/assets/js/app.js?v=8"></script><script src="/assets/js/ads.js" defer></script><script src="/assets/js/pwa.js" defer></script></body></html>
+</section><footer class="site-footer"><div class="footer-links"><a href="/about/">About</a><a href="/how-it-works/">How it works</a><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a><a href="/contact/">Contact</a></div><div>© <span id="year"></span> NetVitals. Developed by Aaron Basil Raj. Browser-based network diagnostics. Measurements are estimates and should not be treated as a security audit.</div></footer><script>document.getElementById('year').textContent=new Date().getFullYear()</script><script src="/assets/js/metrics.js?v=6"></script><script src="/assets/js/fast.js?v=1"></script><script src="/assets/js/app.js?v=9"></script><script src="/assets/js/ads.js" defer></script><script src="/assets/js/pwa.js" defer></script></body></html>

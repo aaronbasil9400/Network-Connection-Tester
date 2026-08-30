@@ -380,13 +380,13 @@ The storage-key names are legacy implementation identifiers; changing them can r
 ## PWA cache
 
 Current cache:
-`netvitals-v8`
+`netvitals-v10`
 
 Core versioned assets:
-- `site.css?v=4`
+- `site.css?v=6`
 - `metrics.js?v=6`
 - `fast.js?v=1`
-- `app.js?v=8`
+- `app.js?v=9`
 
 A release that changes these files should update cache/versioning consistently.
 
@@ -403,6 +403,20 @@ A release that changes these files should update cache/versioning consistently.
 ### Permissions Policy rationale
 
 The `Permissions-Policy` disables camera, microphone, and geolocation. NetVitals has no feature requiring those capabilities, and disabling them reduces unnecessary permission surface for a browser-based diagnostic. Do not relax this policy unless a new, documented feature requires the corresponding capability and its privacy implications have been reviewed.
+
+## Visual design system
+
+The interface is styled by `assets/css/site.css` and its structure is defined by
+`index.html`. The visual identity is specified in `DESIGN.md` (the "Vitals Monitor"
+system: screen-black + phosphor-green signal, IBM Plex Sans/Mono, an ECG progress
+bar as a decorative health visualization). The rollout plan is
+`docs/UI_REVAMP_PLAN.md`.
+
+Visual styling is presentation-only. It must not alter measurement semantics,
+report wording, security signals, localStorage keys, or `/ping.txt` cache rules.
+The ECG trace is decorative, not a measurement.
+The implementation also excludes the retired AI-dashboard clichés: blue gradients,
+glassmorphism blur, neon glows, and floating drop-shadow cards.
 
 ## Testing architecture
 

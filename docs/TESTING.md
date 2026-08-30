@@ -258,10 +258,32 @@ Do not add tests for browser-invisible router/Wi-Fi properties.
 
 After changing core assets:
 - bump cache/asset versions together,
+- current Vitals Monitor core versions are `netvitals-v10`, `site.css?v=6`, and
+  `app.js?v=9` (with `metrics.js?v=6` and `fast.js?v=1` unchanged),
 - unregister old worker or test upgrade from previous version,
 - verify new worker activates,
 - verify offline shell still works,
 - verify `/ping.txt` remains network-only.
+
+## UI redesign / visual regression
+
+The Vitals Monitor design system (`DESIGN.md`) and its rollout are described in
+`docs/UI_REVAMP_PLAN.md`. For the redesign (and any future visual change), verify:
+
+- **ECG progress bar** — idle shows the faint ghost track with an empty fill; running
+  draws the bright trace left-to-right with the pulse dot at the fill head; complete
+  shows the full trace; offline/error resets cleanly. The trace is decorative and
+  must not animate on a loop.
+- **No AI-dashboard clichés** — no `linear-gradient` button fills, no
+  `backdrop-filter` blur, no blue/purple/neon glows, no drop-shadow floating cards.
+- **Typography** — IBM Plex Sans (headings/body) and IBM Plex Mono (numbers/labels)
+  load; system fallback stacks render correctly when fonts are blocked.
+- **Contrast** — phosphor green on screen-black and the amber/red severity text stay
+  legible; status is never communicated by color alone (dots/pills keep text).
+- **Measurement labels unchanged** — latency remains "HTTP RTT approximation", loss
+  remains "application-layer request loss", security remains "browser-visible only".
+
+These are manual checks in addition to the viewport/overflow checks already listed.
 
 ## Definition of Done
 

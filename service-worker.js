@@ -1,5 +1,5 @@
-const CACHE='netvitals-v8';
-const ASSETS=['/','/assets/css/site.css?v=4','/assets/js/metrics.js?v=6','/assets/js/fast.js?v=1','/assets/js/app.js?v=8','/assets/js/config.js','/assets/js/ads.js','/assets/js/pwa.js','/manifest.webmanifest','/assets/icons/favicon.svg','/assets/icons/favicon.ico','/assets/icons/apple-touch-icon.png','/assets/icons/icon-192.png','/assets/icons/icon-512.png'];
+const CACHE='netvitals-v10';
+const ASSETS=['/','/assets/css/site.css?v=6','/assets/js/metrics.js?v=6','/assets/js/fast.js?v=1','/assets/js/app.js?v=9','/assets/js/config.js','/assets/js/ads.js','/assets/js/pwa.js','/manifest.webmanifest','/assets/icons/favicon.svg','/assets/icons/favicon.ico','/assets/icons/apple-touch-icon.png','/assets/icons/icon-192.png','/assets/icons/icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{const url=new URL(e.request.url);if(e.request.method!=='GET'||url.origin!==location.origin||url.pathname==='/ping.txt')return;e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('/'))))});

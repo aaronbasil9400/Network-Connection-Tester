@@ -22,6 +22,7 @@ For every task:
    - intentional design choices → `docs/DECISIONS.md`
    - validation → `docs/TESTING.md`
    - known work / technical debt → `docs/TODO.md`
+   - visual identity / UI work → `DESIGN.md` (and `docs/UI_REVAMP_PLAN.md` when redesigning)
 4. Open only the source files required for the task.
 5. Expand context only when a dependency cannot be established from the selected files.
 
@@ -264,10 +265,13 @@ Preserve unless deliberately redesigning:
 - History/settings remain local to the browser.
 - HTTPS is the production assumption.
 - Canonical production origin is `https://netvitals.net`.
+- The Vitals Monitor visual system is defined in `DESIGN.md`; its ECG progress
+  trace is decorative, and UI work must avoid AI-dashboard clichés such as blue
+  gradients, glassmorphism blur, neon glows, and floating drop-shadow cards.
 
 ## Cache/version discipline
 
-`site.css` uses asset version `v=4`, `metrics.js` uses `v=6`, `fast.js` uses `v=1`, `app.js` uses `v=8`, and the service-worker cache is `netvitals-v8`. Bump versions per changed file; do not let a changed file keep an old query string.
+`site.css` uses asset version `v=6`, `metrics.js` uses `v=6`, `fast.js` uses `v=1`, `app.js` uses `v=9`, and the service-worker cache is `netvitals-v10`. Bump versions per changed file; do not let a changed file keep an old query string.
 
 When changing cached core CSS/JS:
 
